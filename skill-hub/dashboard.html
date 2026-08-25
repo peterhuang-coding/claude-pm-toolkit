@@ -1,0 +1,506 @@
+<title>skill-hub</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root{
+  --paper:#F3F5F7; --surface:#FFFFFF; --surface-2:#ECF0F3;
+  --ink:#16202B; --ink-2:#3E4A58; --ink-3:#6B7686;
+  --line:#D9DFE6;
+  --signal:#0E7490; --signal-soft:#E2F0F5;
+  --err:#B42318; --err-soft:#FBE9E7;
+  --warn:#B54708; --warn-soft:#FDF0E2;
+  --ok:#067647; --ok-soft:#E4F3EC;
+  --info:#475467; --info-soft:#ECF0F3;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --paper:#0F141A; --surface:#151C24; --surface-2:#1B242E;
+    --ink:#E8ECF1; --ink-2:#BAC3CF; --ink-3:#8C96A4;
+    --line:#2A3542;
+    --signal:#35A8C4; --signal-soft:#0F242E;
+    --err:#F97066; --err-soft:#2C1715;
+    --warn:#FDB022; --warn-soft:#2B2112;
+    --ok:#32D583; --ok-soft:#11271D;
+    --info:#98A2B3; --info-soft:#1E2730;
+  }
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:var(--paper); color:var(--ink);
+  font-family:system-ui,-apple-system,"PingFang SC","Hiragino Sans GB","Noto Sans SC",sans-serif;
+  font-size:14px; line-height:1.7;
+  display:flex; flex-direction:column; height:100vh; overflow:hidden;
+}
+.mono{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+button{font:inherit;cursor:pointer;border:none;background:none;color:inherit}
+input,textarea{font:inherit;color:inherit}
+
+/* header */
+header{background:var(--surface);border-bottom:1px solid var(--line);padding:0 20px;display:flex;align-items:center;gap:18px;height:52px;flex:none}
+.brand{font-family:"IBM Plex Mono",monospace;font-weight:600;font-size:15px;display:flex;align-items:center;gap:8px}
+.brand .dot{width:9px;height:9px;border-radius:50%;background:var(--signal);display:inline-block}
+.brand small{color:var(--ink-3);font-weight:400}
+.tabs{display:flex;gap:2px}
+.tab{padding:6px 14px;border-radius:7px;color:var(--ink-2);font-size:13.5px}
+.tab:hover{background:var(--surface-2)}
+.tab.active{background:var(--signal-soft);color:var(--signal);font-weight:600}
+.spacer{flex:1}
+.btn{padding:6px 14px;border-radius:7px;border:1px solid var(--line);background:var(--surface);color:var(--ink-2);font-size:13px}
+.btn:hover{border-color:var(--signal);color:var(--signal)}
+.btn.primary{background:var(--signal);border-color:var(--signal);color:#fff}
+.btn.primary:hover{opacity:.88;color:#fff}
+.btn.danger:hover{border-color:var(--err);color:var(--err)}
+.btn:disabled{opacity:.4;cursor:default}
+.btn:disabled:hover{border-color:var(--line);color:var(--ink-2)}
+.btn.primary:disabled:hover{color:#fff}
+
+main{flex:1;overflow:hidden;display:flex}
+.pane{display:none;flex:1;overflow:hidden}
+.pane.active{display:flex;flex-direction:column}
+
+/* overview */
+.overview{overflow-y:auto;padding:26px 30px;max-width:1060px;margin:0 auto;width:100%}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:30px}
+.stat{background:var(--surface);border:1px solid var(--line);padding:14px 16px;border-radius:8px}
+.stat .n{font-family:"IBM Plex Mono",monospace;font-size:26px;font-weight:600;color:var(--ink)}
+.stat .n.bad{color:var(--err)}
+.stat .n.warnc{color:var(--warn)}
+.stat .l{font-size:12.5px;color:var(--ink-3);margin-top:2px}
+.ov-title{font-family:"Noto Serif SC","Songti SC",serif;font-size:18px;font-weight:700;margin-bottom:14px}
+.healthcard{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--info);padding:14px 18px;margin-bottom:10px;border-radius:0 8px 8px 0}
+.healthcard.error{border-left-color:var(--err)}
+.healthcard.warning{border-left-color:var(--warn)}
+.hrow{display:flex;align-items:center;gap:10px;margin-bottom:4px}
+.hlevel{font-family:"IBM Plex Mono",monospace;font-size:11px;font-weight:600;padding:2px 9px;border-radius:4px}
+.error .hlevel{background:var(--err-soft);color:var(--err)}
+.warning .hlevel{background:var(--warn-soft);color:var(--warn)}
+.info .hlevel{background:var(--info-soft);color:var(--info)}
+.htitle{font-weight:600;font-size:14px}
+.hdetail{font-size:13px;color:var(--ink-2)}
+.hpaths{margin-top:8px;font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--ink-3);line-height:1.9;word-break:break-all}
+.empty{color:var(--ink-3);padding:30px 0;text-align:center}
+
+/* two-pane */
+.twopane{display:flex;flex:1;overflow:hidden}
+.sidebar{width:340px;flex:none;border-right:1px solid var(--line);display:flex;flex-direction:column;background:var(--surface)}
+.stoolbar{padding:10px 12px;border-bottom:1px solid var(--line);flex:none}
+.search{width:100%;padding:7px 12px;border:1px solid var(--line);border-radius:7px;background:var(--paper);font-size:13px;outline:none}
+.search:focus{border-color:var(--signal)}
+.filters{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.fchip{font-size:12px;padding:3px 10px;border-radius:12px;border:1px solid var(--line);color:var(--ink-3)}
+.fchip:hover{color:var(--signal);border-color:var(--signal)}
+.fchip.active{background:var(--signal-soft);border-color:var(--signal);color:var(--signal)}
+.slist{flex:1;overflow-y:auto;padding:6px}
+.sitem{padding:9px 12px;border-radius:7px;cursor:pointer;border:1px solid transparent}
+.sitem:hover{background:var(--surface-2)}
+.sitem.active{background:var(--signal-soft);border-color:var(--signal)}
+.sitem .row1{display:flex;align-items:center;gap:8px}
+.sitem .sname{font-family:"IBM Plex Mono",monospace;font-size:13px;font-weight:600;flex:none;max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sitem .sdesc{font-size:12px;color:var(--ink-3);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip{font-size:10.5px;padding:1px 8px;border-radius:10px;font-family:"IBM Plex Mono",monospace;flex:none}
+.chip.user{background:var(--signal-soft);color:var(--signal)}
+.chip.link{background:var(--info-soft);color:var(--info)}
+.chip.dormant{background:var(--warn-soft);color:var(--warn)}
+.chip.plugin{background:var(--surface-2);color:var(--ink-3)}
+.chip.broken{background:var(--err-soft);color:var(--err)}
+.chip.agent{background:var(--ok-soft);color:var(--ok)}
+.chip.nat-pe{background:var(--ok-soft);color:var(--ok)}
+.chip.nat-tool{background:var(--signal-soft);color:var(--signal)}
+.chip.nat-api{background:var(--warn-soft);color:var(--warn)}
+.chip.nat-mixed{background:var(--info-soft);color:var(--info)}
+.scat{font-size:10.5px;color:var(--ink-3);background:var(--surface-2);padding:1px 7px;border-radius:10px;flex:none}
+.catselect{font-size:12.5px;padding:4px 8px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink)}
+.catlist{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px}
+
+.detail{flex:1;overflow-y:auto;padding:24px 30px}
+.dhead{display:flex;align-items:baseline;gap:12px;margin-bottom:4px;flex-wrap:wrap}
+.dname{font-family:"Noto Serif SC","Songti SC",serif;font-size:22px;font-weight:700;word-break:break-all}
+.dmeta{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 16px}
+.drows{margin-bottom:14px}
+.drow{display:flex;gap:10px;font-size:12.5px;padding:3px 0}
+.drow .k{color:var(--ink-3);flex:none;width:64px}
+.drow .v{color:var(--ink-2);word-break:break-all}
+.descbox{background:var(--surface-2);border-radius:8px;padding:12px 16px;font-size:13px;color:var(--ink-2);margin-bottom:16px;white-space:pre-wrap}
+.dactions{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+.editor{width:100%;min-height:420px;padding:14px 16px;border:1px solid var(--line);border-radius:8px;background:var(--surface);font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-size:12.5px;line-height:1.75;resize:vertical;outline:none;tab-size:2}
+.editor:focus{border-color:var(--signal)}
+.editor[readonly]{background:var(--surface-2);color:var(--ink-3)}
+.dirty-note{font-size:12px;color:var(--warn);margin-left:10px}
+
+/* modal */
+.mask{position:fixed;inset:0;background:rgba(10,15,22,.45);display:none;align-items:center;justify-content:center;z-index:50;padding:20px}
+.mask.show{display:flex}
+.modal{background:var(--surface);border:1px solid var(--line);border-radius:10px;width:640px;max-width:100%;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 18px 50px rgba(0,0,0,.25)}
+.mhead{padding:16px 20px;border-bottom:1px solid var(--line);font-family:"Noto Serif SC","Songti SC",serif;font-size:17px;font-weight:700}
+.mbody{padding:16px 20px;overflow-y:auto;display:flex;flex-direction:column;gap:12px}
+.mfield label{display:block;font-size:12.5px;color:var(--ink-3);margin-bottom:5px}
+.mfield input,.mfield textarea{width:100%;padding:8px 12px;border:1px solid var(--line);border-radius:7px;background:var(--paper);outline:none}
+.mfield input:focus,.mfield textarea:focus{border-color:var(--signal)}
+.mfield textarea{min-height:220px;font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-size:12.5px;resize:vertical}
+.mfoot{padding:12px 20px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:10px}
+
+/* toast */
+.toast{position:fixed;bottom:26px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--paper);padding:10px 20px;border-radius:8px;font-size:13px;z-index:99;opacity:0;pointer-events:none;transition:opacity .18s;max-width:70vw}
+.toast.show{opacity:1}
+.toast.ok{background:var(--ok)}
+.toast.err{background:var(--err)}
+</style>
+
+<header>
+  <div class="brand"><span class="dot"></span>skill-hub <small class="mono">:3458</small></div>
+  <div class="tabs">
+    <button class="tab active" data-tab="overview">总览</button>
+    <button class="tab" data-tab="skills">Skills</button>
+    <button class="tab" data-tab="commands">命令</button>
+    <button class="tab" data-tab="agents">Agents</button>
+  </div>
+  <div class="spacer"></div>
+  <button class="btn" id="btn-refresh">刷新</button>
+  <button class="btn primary" id="btn-new">＋ 新建 Skill</button>
+</header>
+
+<main>
+  <!-- 总览 -->
+  <div class="pane active" id="pane-overview">
+    <div class="overview">
+      <div class="stats" id="stats"></div>
+      <div class="ov-title">分类分布</div>
+      <div class="catlist" id="catdist"></div>
+      <div class="ov-title" style="margin-top:22px">性质分布</div>
+      <div class="catlist" id="natdist"></div>
+      <div class="ov-title" style="margin-top:22px">体检报告</div>
+      <div id="health"></div>
+    </div>
+  </div>
+
+  <!-- Skills -->
+  <div class="pane" id="pane-skills">
+    <div class="twopane">
+      <div class="sidebar">
+        <div class="stoolbar">
+          <input class="search" id="sk-search" placeholder="搜索名称 / 描述…">
+          <div class="filters" id="sk-filters">
+            <button class="fchip active" data-f="all">全部</button>
+            <button class="fchip" data-f="user">本目录</button>
+            <button class="fchip" data-f="symlink">链接挂载</button>
+            <button class="fchip" data-f="dormant">未挂载</button>
+            <button class="fchip" data-f="plugin">插件</button>
+          </div>
+          <div class="filters" id="sk-cats"></div>
+          <div class="filters" id="sk-nats"></div>
+        </div>
+        <div class="slist" id="sk-list"></div>
+      </div>
+      <div class="detail" id="sk-detail"></div>
+    </div>
+  </div>
+
+  <!-- 命令 -->
+  <div class="pane" id="pane-commands">
+    <div class="twopane">
+      <div class="sidebar">
+        <div class="stoolbar">
+          <input class="search" id="cm-search" placeholder="搜索名称 / 描述…">
+        </div>
+        <div class="slist" id="cm-list"></div>
+      </div>
+      <div class="detail" id="cm-detail"></div>
+    </div>
+  </div>
+
+  <!-- Agents -->
+  <div class="pane" id="pane-agents">
+    <div class="twopane">
+      <div class="sidebar">
+        <div class="stoolbar">
+          <input class="search" id="ag-search" placeholder="搜索名称 / 描述…">
+        </div>
+        <div class="slist" id="ag-list"></div>
+      </div>
+      <div class="detail" id="ag-detail"></div>
+    </div>
+  </div>
+</main>
+
+<!-- 新建弹窗 -->
+<div class="mask" id="mask-create">
+  <div class="modal">
+    <div class="mhead">新建 Skill</div>
+    <div class="mbody">
+      <div class="mfield">
+        <label>名称（目录名，小写英文 + 连字符）</label>
+        <input id="cr-name" placeholder="my-new-skill" class="mono">
+      </div>
+      <div class="mfield">
+        <label>描述（触发条件，一句话）</label>
+        <input id="cr-desc" placeholder="Use when the user wants to …">
+      </div>
+      <div class="mfield">
+        <label>正文（Markdown，frontmatter 会自动生成）</label>
+        <textarea id="cr-body" placeholder="# My Skill&#10;&#10;## 何时使用&#10;…"></textarea>
+      </div>
+    </div>
+    <div class="mfoot">
+      <button class="btn" data-close="mask-create">取消</button>
+      <button class="btn primary" id="cr-submit">创建</button>
+    </div>
+  </div>
+</div>
+
+<!-- 复制弹窗 -->
+<div class="mask" id="mask-copy">
+  <div class="modal">
+    <div class="mhead">复制为自己的 Skill</div>
+    <div class="mbody">
+      <div class="mfield">
+        <label>新名称（将写入 ~/.claude/skills/&lt;新名称&gt;/SKILL.md）</label>
+        <input id="cp-name" class="mono">
+      </div>
+    </div>
+    <div class="mfoot">
+      <button class="btn" data-close="mask-copy">取消</button>
+      <button class="btn primary" id="cp-submit">复制</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+const state = {tab:"overview", skills:[], commands:[], agents:[], sel:{}, dirty:false, cats:[], nats:[], curCat:"all", curNat:"all"};
+
+async function api(path, opts){
+  const r = await fetch("/api"+path, opts ? {method:opts.method||"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(opts.body)} : undefined);
+  const j = await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error(j.error || j.detail || ("HTTP "+r.status));
+  return j;
+}
+
+function toast(msg, kind){
+  const t = $("#toast");
+  t.textContent = msg; t.className = "toast show "+(kind||"");
+  clearTimeout(t._h); t._h = setTimeout(()=>t.className="toast", 2600);
+}
+
+const chipFor = s => s.broken ? '<span class="chip broken">断链</span>'
+  : s.group==="skill" && s.kind==="user" ? '<span class="chip user">本目录</span>'
+  : s.group==="skill" ? '<span class="chip link">链接</span>'
+  : s.group==="dormant" ? '<span class="chip dormant">未挂载</span>'
+  : s.group==="plugin" ? '<span class="chip plugin">插件</span>'
+  : s.group==="command" ? '<span class="chip user">命令</span>'
+  : '<span class="chip agent">Agent</span>';
+
+const fmtTime = m => m ? new Date(m*1000).toLocaleString("zh-CN",{hour12:false}) : "—";
+const fmtSize = b => b>=1024 ? (b/1024).toFixed(1)+" KB" : b+" B";
+
+function listItemHTML(s){
+  return `<div class="sitem" data-g="${s.group}" data-n="${esc(s.name)}">
+    <div class="row1">${chipFor(s)}<span class="sname" title="${esc(s.name)}">${esc(s.name)}</span>${s.nature_label?`<span class="chip nat-${esc(s.nature)}">${esc(s.nature_label)}</span>`:""}${s.category_label?`<span class="scat">${esc(s.category_label)}</span>`:""}</div>
+    <div class="sdesc">${esc(s.description||"（无描述）")}</div>
+  </div>`;
+}
+
+function renderList(sel, items, filter){
+  const box = $("#"+sel); box.innerHTML = "";
+  const list = items.filter(filter);
+  if(!list.length){ box.innerHTML = '<div class="empty">没有匹配项</div>'; return; }
+  box.innerHTML = list.map(listItemHTML).join("");
+  box.querySelectorAll(".sitem").forEach(el=>{
+    el.onclick = ()=>{
+      box.querySelectorAll(".sitem").forEach(e=>e.classList.remove("active"));
+      el.classList.add("active");
+      state.sel = {group:el.dataset.g, name:el.dataset.n};
+      state.dirty = false;
+      openDetail(state.tab);
+    };
+  });
+}
+
+async function openDetail(tab){
+  const g = state.sel.group, n = state.sel.name;
+  const isSkill = g==="skill"||g==="dormant"||g==="plugin";
+  const end = isSkill ? `/skills/${g}/${n}` : tab==="commands" ? `/commands/${n}` : `/agents/${n}`;
+  let item, content="";
+  try{ const j = await api(end); content = j.content; }catch(e){ toast(e.message,"err"); return; }
+  const all = tab==="skills" ? state.skills : tab==="commands" ? state.commands : state.agents;
+  item = all.find(s=>s.group===g && s.name===n) || {};
+  const paneId = tab==="skills" ? "sk-detail" : tab==="commands" ? "cm-detail" : "ag-detail";
+  const pane = $("#"+paneId);
+  const tools = (item.raw_meta && item.raw_meta.tools) ? item.raw_meta.tools.split(",").map(t=>t.trim()).filter(Boolean) : [];
+
+  let actions = "";
+  if(isSkill){
+    if(item.editable){
+      actions += `<button class="btn primary" id="act-save">保存</button>`;
+      actions += `<button class="btn danger" id="act-archive">归档</button>`;
+    } else if(item.group==="skill" && item.kind==="symlink"){
+      actions += `<button class="btn" id="act-toggle">卸载链接</button>`;
+      actions += `<button class="btn" id="act-copy">复制为自己的</button>`;
+    } else if(item.group==="dormant"){
+      actions += `<button class="btn primary" id="act-toggle">挂载</button>`;
+      actions += `<button class="btn" id="act-copy">复制为自己的</button>`;
+    } else if(item.group==="plugin"){
+      actions += `<button class="btn" id="act-copy">复制为自己的</button>`;
+    }
+  }
+
+  const rows = [
+    ["路径", `<span class="mono">${esc(item.path||"—")}</span>`],
+    ["来源", esc(item.source||"—")],
+    ["大小", fmtSize(item.size||0)],
+    ["修改", fmtTime(item.mtime)],
+  ];
+  if(item.target) rows.push(["目标", `<span class="mono">${esc(item.target)}</span>`]);
+  if(tools.length) rows.push(["工具", tools.map(t=>`<span class="chip user">${esc(t)}</span>`).join(" ")]);
+  if(isSkill){
+    const cOpts = state.cats.map(c=>`<option value="${esc(c.key)}" ${(item.category||"")===c.key?"selected":""}>${esc(c.label)}</option>`).join("");
+    const nOpts = state.nats.map(c=>`<option value="${esc(c.key)}" ${(item.nature||"")===c.key?"selected":""}>${esc(c.label)}</option>`).join("");
+    rows.push(["分类", `<select id="cat-sel" class="catselect">${cOpts}</select>`], ["性质", `<select id="nat-sel" class="catselect">${nOpts}</select>`]);
+  }
+
+  pane.innerHTML = `
+    <div class="dhead"><span class="dname">${esc(n)}</span>${chipFor(item)}</div>
+    <div class="drows">${rows.map(r=>`<div class="drow"><span class="k">${r[0]}</span><span class="v">${r[1]}</span></div>`).join("")}</div>
+    ${item.description?`<div class="descbox">${esc(item.description)}</div>`:""}
+    <div class="dactions">${actions}<span class="dirty-note" id="dirty-note" style="display:none">未保存的修改</span></div>
+    <textarea class="editor" id="editor" ${item.editable?"":"readonly"} spellcheck="false">${esc(content)}</textarea>`;
+
+  const ed = $("#editor");
+  ed.oninput = ()=>{ state.dirty = true; $("#dirty-note").style.display = item.editable?"inline":"none"; };
+  ed.onkeydown = e=>{ if((e.metaKey||e.ctrlKey) && e.key==="s" && item.editable){ e.preventDefault(); doSave(); } };
+
+  if(item.editable) $("#act-save").onclick = doSave;
+  if(item.editable) $("#act-archive").onclick = async ()=>{
+    if(!confirm(`归档技能 ${n}？将移动到 ~/skill-hub/archive/。`)) return;
+    try{ const j = await api(`/skills/${g}/${n}/archive`); toast(`已归档 → ${j.archived_to}`,"ok"); await loadAll(); state.sel={}; renderTab("skills"); }catch(e){ toast(e.message,"err"); }
+  };
+  const actT = $("#act-toggle");
+  if(actT) actT.onclick = async ()=>{
+    try{ const j = await api(`/skills/${g}/${n}/toggle`); toast(j.action==="mounted"?"已挂载":"已卸载","ok"); await loadAll(); renderTab("skills"); }catch(e){ toast(e.message,"err"); }
+  };
+  const actC = $("#act-copy");
+  if(actC) actC.onclick = ()=>{ $("#cp-name").value = n+"-mine"; $("#mask-copy").classList.add("show"); };
+  const cs = $("#cat-sel"), ns = $("#nat-sel");
+  if(cs) cs.onchange = ()=>setMeta({name:n, category:cs.value, nature:item.nature||""});
+  if(ns) ns.onchange = ()=>setMeta({name:n, category:item.category||"", nature:ns.value});
+  async function setMeta(b){ try{ await api("/meta",{body:b}); toast("分类已更新","ok"); await loadAll(); }catch(e){ toast(e.message,"err"); } }
+
+  async function doSave(){
+    try{ await api(`/skills/${g}/${n}`, {method:"PUT", body:{content: ed.value}}); state.dirty=false; $("#dirty-note").style.display="none"; toast("已保存","ok"); await loadAll(); }catch(e){ toast(e.message,"err"); }
+  }
+}
+
+function renderTab(tab){
+  state.tab = tab;
+  document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("active", t.dataset.tab===tab));
+  document.querySelectorAll(".pane").forEach(p=>p.classList.remove("active"));
+  $("#pane-"+tab).classList.add("active");
+  if(tab==="skills"){ renderCatChips(); renderNatChips(); renderList("sk-list", state.skills, skillFilter()); }
+  if(tab==="commands") renderList("cm-list", state.commands, ()=>true);
+  if(tab==="agents") renderList("ag-list", state.agents, ()=>true);
+  const listId = tab==="skills"?"sk-list":tab==="commands"?"cm-list":"ag-list";
+  if(state.sel && state.sel.name){
+    const el = document.querySelector(`#${listId} .sitem[data-g="${state.sel.group}"][data-n="${CSS.escape(state.sel.name)}"]`);
+    if(el) el.classList.add("active");
+  }
+}
+
+function renderCatChips(){
+  const row = $("#sk-cats"); if(!row) return;
+  row.innerHTML = '<button class="fchip'+(state.curCat==="all"?" active":"")+'" data-k="all">全部分类</button>' +
+    state.cats.map(c=>`<button class="fchip${state.curCat===c.key?" active":""}" data-k="${esc(c.key)}">${esc(c.label)} <span style="opacity:.6">${c.count}</span></button>`).join("");
+  row.querySelectorAll(".fchip").forEach(f=>f.onclick=()=>{ state.curCat=f.dataset.k; renderTab("skills"); });
+}
+function renderNatChips(){
+  const row = $("#sk-nats"); if(!row) return;
+  row.innerHTML = '<button class="fchip'+(state.curNat==="all"?" active":"")+'" data-k="all">全部性质</button>' +
+    state.nats.map(c=>`<button class="fchip${state.curNat===c.key?" active":""}" data-k="${esc(c.key)}">${esc(c.label)} <span style="opacity:.6">${c.count}</span></button>`).join("");
+  row.querySelectorAll(".fchip").forEach(f=>f.onclick=()=>{ state.curNat=f.dataset.k; renderTab("skills"); });
+}
+
+let curFilter = "all", curSearch = "";
+function skillFilter(){
+  return s=>{
+    if(curFilter==="user" && !(s.group==="skill"&&s.kind==="user")) return false;
+    if(curFilter==="symlink" && !(s.group==="skill"&&s.kind==="symlink")) return false;
+    if(curFilter==="dormant" && s.group!=="dormant") return false;
+    if(curFilter==="plugin" && s.group!=="plugin") return false;
+    if(state.curCat!=="all" && (s.category||"")!==state.curCat) return false;
+    if(state.curNat!=="all" && (s.nature||"")!==state.curNat) return false;
+    if(curSearch){ const q=curSearch.toLowerCase(); if(!((s.name||"").toLowerCase().includes(q)||(s.description||"").toLowerCase().includes(q))) return false; }
+    return true;
+  };
+}
+
+async function loadAll(){
+  try{
+    const [ov, sk, cm, ag] = await Promise.all([api("/overview"), api("/skills"), api("/commands"), api("/agents")]);
+    state.skills = sk.items; state.commands = cm.items; state.agents = ag.items;
+    state.cats = ov.categories || []; state.nats = ov.natures || [];
+    renderOverview(ov);
+    renderTab(state.tab);
+    const still = state.sel && state.sel.name && state.tab!=="overview";
+    if(still) openDetail(state.tab).catch(()=>{});
+  }catch(e){ toast("加载失败："+e.message,"err"); }
+}
+
+function renderOverview(ov){
+  const c = ov.counts;
+  const issues = c.health_error + c.health_warning;
+  $("#stats").innerHTML = `
+    <div class="stat"><div class="n">${c.mounted_user}</div><div class="l">本目录技能</div></div>
+    <div class="stat"><div class="n">${c.mounted_symlink}</div><div class="l">链接挂载</div></div>
+    <div class="stat"><div class="n warnc">${c.dormant}</div><div class="l">未挂载（休眠）</div></div>
+    <div class="stat"><div class="n">${c.plugin}</div><div class="l">插件技能</div></div>
+    <div class="stat"><div class="n">${c.commands}</div><div class="l">斜杠命令</div></div>
+    <div class="stat"><div class="n">${c.agents}</div><div class="l">Agent 定义</div></div>
+    <div class="stat"><div class="n ${issues?"bad":""}">${issues}</div><div class="l">体检问题</div></div>`;
+  const dist = (list, cls) => list.map(c=>`<button class="fchip ${cls}" data-k="${esc(c.key)}">${esc(c.label)} <span style="opacity:.6">${c.count}</span></button>`).join("");
+  $("#catdist").innerHTML = ov.categories ? dist(ov.categories,"catjump") : "";
+  $("#natdist").innerHTML = ov.natures ? dist(ov.natures,"natjump") : "";
+  document.querySelectorAll(".catjump").forEach(b=>b.onclick=()=>{ state.curCat=b.dataset.k; renderTab("skills"); });
+  document.querySelectorAll(".natjump").forEach(b=>b.onclick=()=>{ state.curNat=b.dataset.k; renderTab("skills"); });
+  const h = ov.health;
+  $("#health").innerHTML = h.length
+    ? h.map(x=>`<div class="healthcard ${x.level}">
+        <div class="hrow"><span class="hlevel">${x.level==="error"?"错误":x.level==="warning"?"警告":"提示"}</span><span class="htitle">${esc(x.title)}</span></div>
+        <div class="hdetail">${esc(x.detail)}</div>
+        ${x.paths&&x.paths.length?`<div class="hpaths">${x.paths.slice(0,8).map(esc).join("<br>")}${x.paths.length>8?`<br>+${x.paths.length-8} 更多`:""}</div>`:""}
+      </div>`).join("")
+    : '<div class="empty">体检通过，没有发现问题。</div>';
+}
+
+// events
+document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>renderTab(t.dataset.tab));
+$("#btn-refresh").onclick = loadAll;
+$("#btn-new").onclick = ()=>{ $("#cr-name").value=""; $("#cr-desc").value=""; $("#cr-body").value=""; $("#mask-create").classList.add("show"); };
+document.querySelectorAll("[data-close]").forEach(b=>b.onclick=()=>$("#"+b.dataset.close).classList.remove("show"));
+document.querySelectorAll(".mask").forEach(m=>m.onclick=e=>{ if(e.target===m) m.classList.remove("show"); });
+
+$("#sk-filters").querySelectorAll(".fchip").forEach(f=>f.onclick=()=>{
+  $("#sk-filters").querySelectorAll(".fchip").forEach(x=>x.classList.remove("active"));
+  f.classList.add("active"); curFilter=f.dataset.f; renderTab("skills");
+});
+["sk","cm","ag"].forEach(k=>{
+  $("#"+k+"-search").oninput = e=>{ if(k==="sk"){ curSearch=e.target.value; renderTab("skills"); } else {
+    const items = k==="cm"?state.commands:state.agents;
+    renderList(k+"-list", items, s=>(s.name+" "+(s.description||"")).toLowerCase().includes(e.target.value.toLowerCase()));
+  }};
+});
+
+$("#cr-submit").onclick = async ()=>{
+  const name=$("#cr-name").value.trim(), desc=$("#cr-desc").value.trim(), body=$("#cr-body").value;
+  if(!name){ toast("请填写名称","err"); return; }
+  try{ const j = await api("/skills",{body:{name,description:desc,content:body}}); toast(`已创建 ${j.name}`,"ok"); $("#mask-create").classList.remove("show"); await loadAll(); state.sel={group:"skill",name:j.name}; renderTab("skills"); openDetail("skills"); }catch(e){ toast(e.message,"err"); }
+};
+$("#cp-submit").onclick = async ()=>{
+  const nn=$("#cp-name").value.trim();
+  if(!nn){ toast("请填写新名称","err"); return; }
+  const {group,name} = state.sel;
+  try{ const j = await api(`/skills/${group}/${name}/copy`,{body:{new_name:nn}}); toast(`已复制为 ${j.name}`,"ok"); $("#mask-copy").classList.remove("show"); await loadAll(); state.sel={group:"skill",name:j.name}; renderTab("skills"); openDetail("skills"); }catch(e){ toast(e.message,"err"); }
+};
+
+loadAll();
+</script>

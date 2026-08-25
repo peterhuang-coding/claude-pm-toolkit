@@ -1,0 +1,593 @@
+#!/usr/bin/env python3
+"""skill-hub — local web UI to inspect and curate all Claude Code skills.
+
+Serves http://127.0.0.1:3458. Run with:
+    sh ~/skill-hub/serve.sh
+or
+    python3 -m uvicorn server:app --host 127.0.0.1 --port 3458
+(cwd must be ~/skill-hub)
+"""
+import json
+import re
+import shutil
+from datetime import datetime
+from pathlib import Path
+
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
+from pydantic import BaseModel
+
+HOME = Path.home()
+HUB = Path(__file__).resolve().parent
+SKILLS_DIR = HOME / ".claude" / "skills"
+AGENTS_SRC = HOME / ".agents" / "skills"
+COMMANDS_DIR = HOME / ".claude" / "commands"
+AGENTS_DIR = HOME / ".claude" / "agents"
+PLUGIN_CACHE = HOME / ".claude" / "plugins" / "cache"
+ARCHIVE = HUB / "archive"
+CATEGORIES_FILE = HUB / "categories.json"
+
+NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
+
+app = FastAPI(title="skill-hub")
+
+
+class CreateBody(BaseModel):
+    name: str
+    description: str = ""
+    content: str = ""
+
+
+class SaveBody(BaseModel):
+    content: str
+
+
+class CopyBody(BaseModel):
+    new_name: str
+
+
+class MetaBody(BaseModel):
+    name: str
+    category: str = ""
+    nature: str = ""
+
+
+# ---------- frontmatter ----------
+
+def parse_frontmatter(text: str) -> dict:
+    """Parse a minimal SKILL.md frontmatter block (--- ... ---)."""
+    if not text.startswith("---"):
+        return {}
+    end = text.find("\n---", 3)
+    if end < 0:
+        return {}
+    fm = text[3:end]
+    meta: dict = {}
+    cur_key = None
+    buf: list = []
+    for line in fm.splitlines():
+        if cur_key and (line[:1] in (" ", "\t") or line.strip() == ""):
+            if line.strip():
+                buf.append(line.strip())
+            continue
+        if cur_key and buf:
+            meta[cur_key] = " ".join(buf)
+            buf = []
+        cur_key = None
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#") and ":" in stripped:
+            key, val = stripped.split(":", 1)
+            meta[key.strip()] = val.strip()
+            cur_key = key.strip()
+    if cur_key and buf:
+        meta[cur_key] = " ".join(buf)
+    return meta
+
+
+def is_bak(name: str) -> bool:
+    return ".bak" in name
+
+
+# ---------- taxonomy (category + nature) ----------
+
+def _taxonomy() -> dict:
+    if CATEGORIES_FILE.is_file():
+        try:
+            return json.loads(CATEGORIES_FILE.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            pass
+    return {"categories": {}, "natures": {}, "skills": {}}
+
+
+def tax_for(name: str) -> tuple:
+    t = _taxonomy()
+    entry = t.get("skills", {}).get(name, {})
+    entry = entry if isinstance(entry, dict) else {}
+    cat = entry.get("category", "")
+    nat = entry.get("nature", "")
+    cats = t.get("categories", {})
+    nats = t.get("natures", {})
+    return cat, cats.get(cat, ""), nat, nats.get(nat, "")
+
+
+def taxonomy_counts() -> tuple:
+    t = _taxonomy()
+    names = {s["name"] for s in scan_skills()}
+    cats = t.get("categories", {})
+    nats = t.get("natures", {})
+    cat_count, nat_count = {}, {}
+    for n in names:
+        e = t.get("skills", {}).get(n, {})
+        e = e if isinstance(e, dict) else {}
+        c = e.get("category", "")
+        k = e.get("nature", "")
+        cat_count[c] = cat_count.get(c, 0) + 1
+        nat_count[k] = nat_count.get(k, 0) + 1
+    cat_out = [{"key": k, "label": v, "count": cat_count.get(k, 0)} for k, v in cats.items()]
+    cat_out.append({"key": "", "label": "未分类", "count": cat_count.get("", 0)})
+    nat_out = [{"key": k, "label": v, "count": nat_count.get(k, 0)} for k, v in nats.items()]
+    nat_out.append({"key": "", "label": "未标注", "count": nat_count.get("", 0)})
+    return cat_out, nat_out
+
+
+def md_meta(path: Path) -> dict:
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        text = ""
+    fm = parse_frontmatter(text)
+    try:
+        st = path.stat()
+        size, mtime = st.st_size, int(st.st_mtime)
+    except OSError:
+        size, mtime = 0, 0
+    return {
+        "description": (fm.get("description") or "")[:200],
+        "size": size,
+        "mtime": mtime,
+        "has_frontmatter": bool(fm),
+        "raw_meta": {k: str(v)[:300] for k, v in fm.items()},
+    }
+
+
+# ---------- scanning ----------
+
+def _mounted_names() -> set:
+    names = set()
+    if not SKILLS_DIR.is_dir():
+        return names
+    for p in SKILLS_DIR.iterdir():
+        if p.name.startswith("."):
+            continue
+        if p.is_dir() or p.is_symlink():
+            names.add(p.name)
+    return names
+
+
+def scan_skills() -> list:
+    items = []
+    mounted = _mounted_names()
+
+    # 1. entries under ~/.claude/skills (real dirs and symlinks)
+    if SKILLS_DIR.is_dir():
+        for p in sorted(SKILLS_DIR.iterdir()):
+            if p.name.startswith("."):
+                continue
+            if not (p.is_dir() or p.is_symlink()):
+                continue
+            is_link = p.is_symlink()
+            target = ""
+            try:
+                target = str(p.resolve())
+            except OSError:
+                pass
+            broken = is_link and not p.exists()
+            if is_link and not broken:
+                if target.startswith(str(AGENTS_SRC)):
+                    source_label = "agents-src"
+                elif target.startswith(str(PLUGIN_CACHE)):
+                    source_label = "plugin"
+                else:
+                    source_label = "other"
+            else:
+                source_label = "user"
+            meta = md_meta(p / "SKILL.md")
+            items.append({
+                "group": "skill",
+                "name": p.name,
+                "kind": "symlink" if is_link else "user",
+                "source": source_label,
+                "path": str(p),
+                "target": target,
+                "broken": broken,
+                "mounted": True,
+                "editable": (not is_link) and not broken,
+                "archivable": (not is_link) and not broken,
+                **meta,
+            })
+
+    # 2. skills in ~/.agents/skills that are not mounted
+    if AGENTS_SRC.is_dir():
+        for p in sorted(AGENTS_SRC.iterdir()):
+            if p.name.startswith(".") or not p.is_dir():
+                continue
+            if p.name in mounted:
+                continue
+            meta = md_meta(p / "SKILL.md")
+            items.append({
+                "group": "dormant",
+                "name": p.name,
+                "kind": "src",
+                "source": "agents-src",
+                "path": str(p),
+                "target": "",
+                "broken": False,
+                "mounted": False,
+                "editable": False,
+                "archivable": False,
+                **meta,
+            })
+
+    # 3. plugin-provided skills (managed by the plugin system, read-only)
+    if PLUGIN_CACHE.is_dir():
+        for org in PLUGIN_CACHE.iterdir():
+            if not org.is_dir():
+                continue
+            for repo in org.iterdir():
+                if not repo.is_dir():
+                    continue
+                for ver in repo.iterdir():
+                    skills_root = ver / "skills"
+                    if not skills_root.is_dir():
+                        continue
+                    for p in sorted(skills_root.iterdir()):
+                        if not p.is_dir() or not (p / "SKILL.md").is_file():
+                            continue
+                        meta = md_meta(p / "SKILL.md")
+                        items.append({
+                            "group": "plugin",
+                            "name": p.name,
+                            "kind": "plugin",
+                            "source": f"plugin:{org.name}/{repo.name}",
+                            "path": str(p),
+                            "target": "",
+                            "broken": False,
+                            "mounted": True,
+                            "editable": False,
+                            "archivable": False,
+                            **meta,
+                        })
+    for it in items:
+        it["category"], it["category_label"], it["nature"], it["nature_label"] = tax_for(it["name"])
+    items.sort(key=lambda s: s["name"])
+    return items
+
+
+def scan_md_dir(directory: Path, group: str, kind: str) -> list:
+    items = []
+    if not directory.is_dir():
+        return items
+    for p in sorted(directory.iterdir()):
+        if not p.is_file() or not p.name.endswith(".md") or is_bak(p.name):
+            continue
+        meta = md_meta(p)
+        items.append({
+            "group": group,
+            "name": p.stem,
+            "kind": kind,
+            "source": "user",
+            "path": str(p),
+            "target": "",
+            "broken": False,
+            "mounted": True,
+            "editable": False,
+            "archivable": False,
+            **meta,
+        })
+    return items
+
+
+def scan_commands() -> list:
+    return scan_md_dir(COMMANDS_DIR, "command", "command")
+
+
+def scan_agents() -> list:
+    return scan_md_dir(AGENTS_DIR, "agent", "agent")
+
+
+# ---------- health ----------
+
+def build_health(skills: list) -> list:
+    health = []
+    # broken symlinks
+    broken = [s for s in skills if s.get("broken")]
+    if broken:
+        health.append({
+            "level": "error",
+            "title": f"{len(broken)} 个断开的挂载链接",
+            "detail": "symlink 指向的目标已不存在，Claude Code 会忽略这些技能。",
+            "paths": [s["path"] for s in broken],
+        })
+    # duplicate names across sources
+    by_name: dict = {}
+    for s in skills:
+        by_name.setdefault(s["name"], []).append(s)
+    dup_names = {n: v for n, v in by_name.items() if len(v) > 1}
+    if dup_names:
+        health.append({
+            "level": "warning",
+            "title": f"{len(dup_names)} 个重名技能",
+            "detail": "同一名称出现在多个来源（如本地与插件），触发词会互相竞争。",
+            "paths": [f'{s["name"]} @ {s["source"]}' for v in dup_names.values() for s in v],
+        })
+    # duplicate descriptions (identical content, different names)
+    by_desc: dict = {}
+    for s in skills:
+        d = (s.get("description") or "").strip().lower()
+        if len(d) > 30:
+            by_desc.setdefault(d, []).append(s["name"])
+    dup_desc = {d: v for d, v in by_desc.items() if len(v) > 1}
+    if dup_desc:
+        for d, names in dup_desc.items():
+            health.append({
+                "level": "warning",
+                "title": "描述逐字相同的技能：" + "、".join(names),
+                "detail": "可能是同一技能的重复安装（如同一文件走了两条安装路径）。",
+                "paths": [f"{n}: {d[:120]}" for n in names],
+            })
+    # skills without SKILL.md
+    missing = [s for s in skills if s["group"] == "skill" and not s.get("has_frontmatter") and not s.get("broken")]
+    if missing:
+        health.append({
+            "level": "warning",
+            "title": f"{len(missing)} 个技能目录缺少 SKILL.md",
+            "detail": "目录存在但没有可解析的 SKILL.md，不会被 Claude Code 加载。",
+            "paths": [s["path"] for s in missing],
+        })
+    # .bak files in commands/agents
+    baks = []
+    for d in (COMMANDS_DIR, AGENTS_DIR):
+        if d.is_dir():
+            baks += [str(p) for p in d.iterdir() if p.is_file() and is_bak(p.name)]
+    if baks:
+        health.append({
+            "level": "warning",
+            "title": f"{len(baks)} 个 .bak 备份文件",
+            "detail": "散落的历史备份，建议归档或删除。",
+            "paths": baks,
+        })
+    # dormant count
+    dormant = [s for s in skills if s["group"] == "dormant"]
+    if dormant:
+        health.append({
+            "level": "info",
+            "title": f"{len(dormant)} 个未挂载技能（~/.agents/skills）",
+            "detail": "磁盘上存在但 Claude Code 当前不可见；可在 Skills 页挂载或归档。",
+            "paths": [s["name"] for s in dormant[:30]],
+        })
+    # agents that write docs but lack Write tool
+    for name in ("doc-agent", "dev-agent"):
+        agent_dir = AGENTS_DIR / f"{name}.md"
+        if not agent_dir.is_file():
+            continue
+        fm = parse_frontmatter(agent_dir.read_text(encoding="utf-8", errors="replace"))
+        tools = fm.get("tools", "")
+        if "Write" not in tools:
+            health.append({
+                "level": "info",
+                "title": f"{name} 缺少 Write 工具",
+                "detail": f"tools 为「{tools}」，写文件只能靠 Bash；建议补充 Write/Edit。",
+                "paths": [str(agent_dir)],
+            })
+    return health
+
+
+# ---------- helpers ----------
+
+def now_ts() -> str:
+    return datetime.now().strftime("%Y%m%d-%H%M%S")
+
+
+def resolve_skill(group: str, name: str) -> Path:
+    if not NAME_RE.match(name):
+        raise HTTPException(400, f"非法名称: {name}")
+    if group == "skill":
+        p = SKILLS_DIR / name
+    elif group == "dormant":
+        p = AGENTS_SRC / name
+    elif group == "plugin":
+        # find plugin skill by name
+        if PLUGIN_CACHE.is_dir():
+            for cand in PLUGIN_CACHE.rglob(f"skills/{name}/SKILL.md"):
+                return cand.parent
+        raise HTTPException(404, f"插件技能不存在: {name}")
+    else:
+        raise HTTPException(404, f"未知分组: {group}")
+    if not p.exists():
+        raise HTTPException(404, f"技能不存在: {group}/{name}")
+    return p
+
+
+# ---------- API ----------
+
+@app.get("/")
+def index():
+    return FileResponse(HUB / "dashboard.html")
+
+
+@app.get("/api/overview")
+def overview():
+    skills = scan_skills()
+    commands = scan_commands()
+    agents = scan_agents()
+    counts = {
+        "mounted_user": len([s for s in skills if s["group"] == "skill" and s["kind"] == "user"]),
+        "mounted_symlink": len([s for s in skills if s["group"] == "skill" and s["kind"] == "symlink"]),
+        "dormant": len([s for s in skills if s["group"] == "dormant"]),
+        "plugin": len([s for s in skills if s["group"] == "plugin"]),
+        "commands": len(commands),
+        "agents": len(agents),
+        "health_error": len([h for h in build_health(skills) if h["level"] == "error"]),
+        "health_warning": len([h for h in build_health(skills) if h["level"] == "warning"]),
+    }
+    cats, nats = taxonomy_counts()
+    return {"counts": counts, "health": build_health(skills), "categories": cats, "natures": nats, "generated_at": now_ts()}
+
+
+@app.get("/api/skills")
+def list_skills():
+    return {"items": scan_skills()}
+
+
+@app.get("/api/skills/{group}/{name}")
+def get_skill(group: str, name: str):
+    p = resolve_skill(group, name)
+    md = p / "SKILL.md"
+    content = md.read_text(encoding="utf-8", errors="replace") if md.is_file() else ""
+    return {"name": name, "group": group, "path": str(md), "content": content}
+
+
+@app.post("/api/skills")
+def create_skill(body: CreateBody):
+    name = body.name.strip()
+    if not NAME_RE.match(name):
+        raise HTTPException(400, f"非法名称: {name}（仅字母/数字/连字符/下划线）")
+    dest = SKILLS_DIR / name
+    if dest.exists():
+        raise HTTPException(400, f"技能已存在: {name}")
+    dest.mkdir(parents=True, exist_ok=True)
+    content = body.content.strip("\n")
+    if content.startswith("---"):
+        final = content + "\n"
+    else:
+        desc = body.description.strip().replace("\n", " ")
+        final = f"---\nname: {name}\ndescription: {desc}\n---\n\n{content}\n"
+    (dest / "SKILL.md").write_text(final, encoding="utf-8")
+    return {"ok": True, "name": name, "path": str(dest / "SKILL.md")}
+
+
+@app.put("/api/skills/{group}/{name}")
+def save_skill(group: str, name: str, body: SaveBody):
+    p = resolve_skill(group, name)
+    if group != "skill" or p.is_symlink():
+        raise HTTPException(400, "上游管理的技能不可直接编辑；请使用「复制为自己的」")
+    (p / "SKILL.md").write_text(body.content, encoding="utf-8")
+    return {"ok": True, "name": name}
+
+
+@app.post("/api/skills/{group}/{name}/toggle")
+def toggle_skill(group: str, name: str):
+    if group == "dormant":
+        src = AGENTS_SRC / name
+        if not (src / "SKILL.md").is_file():
+            raise HTTPException(400, f"源技能不存在: {name}")
+        link = SKILLS_DIR / name
+        if link.exists():
+            raise HTTPException(400, f"挂载位置已被占用: {name}")
+        link.symlink_to(src)
+        return {"ok": True, "action": "mounted", "name": name}
+    if group == "skill":
+        link = SKILLS_DIR / name
+        if link.is_symlink():
+            link.unlink()
+            return {"ok": True, "action": "unmounted", "name": name}
+        raise HTTPException(400, "本目录技能请使用「归档」而不是卸载")
+    raise HTTPException(400, "该技能由插件管理，请在插件设置中启停")
+
+
+@app.post("/api/skills/{group}/{name}/copy")
+def copy_skill(group: str, name: str, body: CopyBody):
+    new_name = body.new_name.strip()
+    if not NAME_RE.match(new_name):
+        raise HTTPException(400, f"非法名称: {new_name}")
+    dest = SKILLS_DIR / new_name
+    if dest.exists():
+        raise HTTPException(400, f"技能已存在: {new_name}")
+    p = resolve_skill(group, name)
+    content = (p / "SKILL.md").read_text(encoding="utf-8", errors="replace")
+    if new_name != name and content.startswith("---"):
+        content = re.sub(r"(?m)^name:\s*.*$", f"name: {new_name}", content, count=1)
+    dest.mkdir(parents=True, exist_ok=True)
+    (dest / "SKILL.md").write_text(content, encoding="utf-8")
+    return {"ok": True, "name": new_name, "path": str(dest / "SKILL.md")}
+
+
+@app.post("/api/skills/{group}/{name}/archive")
+def archive_skill(group: str, name: str):
+    if group != "skill":
+        raise HTTPException(400, "只能归档本目录技能")
+    p = SKILLS_DIR / name
+    if not p.is_dir() or p.is_symlink():
+        raise HTTPException(400, "只能归档真实目录（symlink 请用卸载）")
+    ARCHIVE.mkdir(parents=True, exist_ok=True)
+    dest = ARCHIVE / f"{now_ts()}-{name}"
+    shutil.move(str(p), str(dest))
+    return {"ok": True, "archived_to": str(dest)}
+
+
+@app.get("/api/commands")
+def list_commands():
+    return {"items": scan_commands()}
+
+
+@app.get("/api/commands/{name}")
+def get_command(name: str):
+    if not NAME_RE.match(name):
+        raise HTTPException(400, f"非法名称: {name}")
+    p = COMMANDS_DIR / f"{name}.md"
+    if not p.is_file():
+        raise HTTPException(404, f"命令不存在: {name}")
+    return {"name": name, "path": str(p), "content": p.read_text(encoding="utf-8", errors="replace")}
+
+
+@app.get("/api/agents")
+def list_agents():
+    return {"items": scan_agents()}
+
+
+@app.get("/api/agents/{name}")
+def get_agent(name: str):
+    if not NAME_RE.match(name):
+        raise HTTPException(400, f"非法名称: {name}")
+    p = AGENTS_DIR / f"{name}.md"
+    if not p.is_file():
+        raise HTTPException(404, f"Agent 不存在: {name}")
+    return {"name": name, "path": str(p), "content": p.read_text(encoding="utf-8", errors="replace")}
+
+
+@app.get("/api/categories")
+def list_categories():
+    cats, nats = taxonomy_counts()
+    return {"categories": cats, "natures": nats}
+
+
+@app.post("/api/meta")
+def set_meta(body: MetaBody):
+    t = _taxonomy()
+    known = {s["name"] for s in scan_skills()}
+    if body.name not in known:
+        raise HTTPException(404, f"技能不存在: {body.name}")
+    skills = t.setdefault("skills", {})
+    entry = skills.get(body.name, {})
+    entry = entry if isinstance(entry, dict) else {}
+    if body.category:
+        if body.category not in t.get("categories", {}):
+            raise HTTPException(400, f"未知分类: {body.category}")
+        entry["category"] = body.category
+    else:
+        entry.pop("category", None)
+    if body.nature:
+        if body.nature not in t.get("natures", {}):
+            raise HTTPException(400, f"未知性质: {body.nature}")
+        entry["nature"] = body.nature
+    else:
+        entry.pop("nature", None)
+    skills[body.name] = entry
+    CATEGORIES_FILE.write_text(json.dumps(t, ensure_ascii=False, indent=2), encoding="utf-8")
+    return {"ok": True, "name": body.name, "category": entry.get("category", ""), "nature": entry.get("nature", "")}
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(app, host="127.0.0.1", port=3458)

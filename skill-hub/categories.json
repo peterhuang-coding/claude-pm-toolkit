@@ -1,0 +1,296 @@
+{
+  "categories": {
+    "core": "核心总控",
+    "methodology": "工程方法论",
+    "code-quality": "极简与代码质量",
+    "infra": "基础设施",
+    "media": "媒体与视觉",
+    "docs": "文档办公",
+    "appdev": "应用开发",
+    "lark": "飞书办公·休眠"
+  },
+  "natures": {
+    "pe": "纯提示词",
+    "tool": "本地工具",
+    "api": "外部接口",
+    "mixed": "混合"
+  },
+  "skills": {
+    "android-native-dev": {
+      "category": "appdev",
+      "nature": "pe"
+    },
+    "brainstorming": {
+      "category": "methodology",
+      "nature": "pe"
+    },
+    "buddy-sings": {
+      "category": "media",
+      "nature": "api"
+    },
+    "dispatching-parallel-agents": {
+      "category": "methodology",
+      "nature": "pe"
+    },
+    "executing-plans": {
+      "category": "methodology",
+      "nature": "pe"
+    },
+    "finishing-a-development-branch": {
+      "category": "methodology",
+      "nature": "pe"
+    },
+    "flutter-dev": {
+      "category": "appdev",
+      "nature": "pe"
+    },
+    "frontend-dev": {
+      "category": "appdev",
+      "nature": "pe"
+    },
+    "fullstack-dev": {
+      "category": "appdev",
+      "nature": "pe"
+    },
+    "gif-sticker-maker": {
+      "category": "media",
+      "nature": "api"
+    },
+    "ios-application-dev": {
+      "category": "appdev",
+      "nature": "pe"
+    },
+    "lark-approval": {
+      "category": "lark",
+      "nature": "api"
+    },
+    "lark-apps": {
+      "category": "lark",
+      "nature": "api"
+    },
+    "lark-attendance": {
+      "category": "lark",
+      "nature": "api"
+    },
+    "lark-base": {
+      "category": "lark",
+      "nature": "api"
+    },
+    "lark-calendar": {
+      "category": "lark",
+      "nature": "api"
+    },
+    "lark-contact": {
+      "category": "lark",
+      "nature": "api"
+    },
+    "lark-doc": {
+      "category": "lark",
+      "nature": "api"
+    },
+    "lark-drive": {
+      "category": "lark",
+      "nature": "api"
+    },
+    "lark-event": {
+      "category": "lark",
+      "nature": "api"
+    },
+    "lark-im": {
+      "category": "lark",
+      "nature": "api"
+    },
+    "lark-mail": {
+      "category": "lark",
+      "nature": "api"
+    },
+    "lark-markdown": {
+      "category": "lark",
+      "nature": "api"
+    },
+    "lark-minutes": {
+      "category": "lark",
+      "nature": "api"
+    },
+    "lark-note": {
+      "category": "lark",
+      "nature": "api"
+    },
+    "lark-okr": {
+      "category": "lark",
+      "nature": "api"
+    },
+    "lark-openapi-explorer": {
+      "category": "lark",
+      "nature": "api"
+    },
+    "lark-shared": {
+      "category": "lark",
+      "nature": "api"
+    },
+    "lark-sheets": {
+      "category": "lark",
+      "nature": "api"
+    },
+    "lark-skill-maker": {
+      "category": "lark",
+      "nature": "api"
+    },
+    "lark-slides": {
+      "category": "lark",
+      "nature": "api"
+    },
+    "lark-task": {
+      "category": "lark",
+      "nature": "api"
+    },
+    "lark-vc": {
+      "category": "lark",
+      "nature": "api"
+    },
+    "lark-vc-agent": {
+      "category": "lark",
+      "nature": "api"
+    },
+    "lark-whiteboard": {
+      "category": "lark",
+      "nature": "api"
+    },
+    "lark-wiki": {
+      "category": "lark",
+      "nature": "api"
+    },
+    "lark-workflow-meeting-summary": {
+      "category": "lark",
+      "nature": "api"
+    },
+    "lark-workflow-standup-report": {
+      "category": "lark",
+      "nature": "api"
+    },
+    "llm-hub": {
+      "category": "infra",
+      "nature": "mixed"
+    },
+    "minimax-docx": {
+      "category": "docs",
+      "nature": "tool"
+    },
+    "minimax-multimodal-toolkit": {
+      "category": "media",
+      "nature": "api"
+    },
+    "minimax-music-gen": {
+      "category": "media",
+      "nature": "api"
+    },
+    "minimax-music-playlist": {
+      "category": "media",
+      "nature": "api"
+    },
+    "minimax-pdf": {
+      "category": "docs",
+      "nature": "tool"
+    },
+    "minimax-xlsx": {
+      "category": "docs",
+      "nature": "tool"
+    },
+    "mmx-cli": {
+      "category": "media",
+      "nature": "api"
+    },
+    "pm-orchestrator": {
+      "category": "core",
+      "nature": "mixed"
+    },
+    "ponytail": {
+      "category": "code-quality",
+      "nature": "pe"
+    },
+    "ponytail-audit": {
+      "category": "code-quality",
+      "nature": "pe"
+    },
+    "ponytail-debt": {
+      "category": "code-quality",
+      "nature": "pe"
+    },
+    "ponytail-gain": {
+      "category": "code-quality",
+      "nature": "pe"
+    },
+    "ponytail-help": {
+      "category": "code-quality",
+      "nature": "pe"
+    },
+    "ponytail-review": {
+      "category": "code-quality",
+      "nature": "pe"
+    },
+    "pptx-generator": {
+      "category": "docs",
+      "nature": "tool"
+    },
+    "react-native-dev": {
+      "category": "appdev",
+      "nature": "pe"
+    },
+    "receiving-code-review": {
+      "category": "methodology",
+      "nature": "pe"
+    },
+    "requesting-code-review": {
+      "category": "methodology",
+      "nature": "pe"
+    },
+    "shader-dev": {
+      "category": "media",
+      "nature": "pe"
+    },
+    "skill-hub": {
+      "category": "core",
+      "nature": "tool"
+    },
+    "subagent-driven-development": {
+      "category": "methodology",
+      "nature": "pe"
+    },
+    "systematic-debugging": {
+      "category": "methodology",
+      "nature": "pe"
+    },
+    "test-driven-development": {
+      "category": "methodology",
+      "nature": "pe"
+    },
+    "using-git-worktrees": {
+      "category": "methodology",
+      "nature": "pe"
+    },
+    "using-superpowers": {
+      "category": "methodology",
+      "nature": "pe"
+    },
+    "verification-before-completion": {
+      "category": "methodology",
+      "nature": "pe"
+    },
+    "vision-analysis": {
+      "category": "media",
+      "nature": "api"
+    },
+    "writing-plans": {
+      "category": "methodology",
+      "nature": "pe"
+    },
+    "writing-skills": {
+      "category": "methodology",
+      "nature": "pe"
+    },
+    "autopilot": {
+      "category": "core",
+      "nature": "tool"
+    }
+  }
+}
