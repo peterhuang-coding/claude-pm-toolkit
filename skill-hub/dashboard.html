@@ -146,12 +146,13 @@ main{flex:1;overflow:hidden;display:flex}
 </style>
 
 <header>
-  <div class="brand"><span class="dot"></span>skill-hub <small class="mono">:3458</small></div>
+  <div class="brand"><span class="dot"></span>skill-hub <small class="mono">:3458</small> <small class="mono" style="color:var(--ink-3);font-size:11px">v2.4</small></div>
   <div class="tabs">
     <button class="tab active" data-tab="overview">总览</button>
     <button class="tab" data-tab="skills">Skills</button>
     <button class="tab" data-tab="commands">命令</button>
     <button class="tab" data-tab="agents">Agents</button>
+    <button class="tab" data-tab="resume">断点</button>
   </div>
   <div class="spacer"></div>
   <button class="btn" id="btn-sync">同步到 GitHub</button>
@@ -211,6 +212,14 @@ main{flex:1;overflow:hidden;display:flex}
         <div class="slist" id="cm-list"></div>
       </div>
       <div class="detail" id="cm-detail"></div>
+    </div>
+  </div>
+
+  <!-- 断点恢复 -->
+  <div class="pane" id="pane-resume">
+    <div class="overview">
+      <div class="ov-title">断点恢复（最近会话，点击复制重启命令到终端执行）</div>
+      <div id="sessions"></div>
     </div>
   </div>
 
@@ -420,6 +429,7 @@ function renderTab(tab){
   if(tab==="skills"){ renderCatChips(); renderNatChips(); renderList("sk-list", state.skills, skillFilter()); }
   if(tab==="commands") renderList("cm-list", state.commands, ()=>true);
   if(tab==="agents") renderList("ag-list", state.agents, ()=>true);
+  if(tab==="resume") loadSessions();
   const listId = tab==="skills"?"sk-list":tab==="commands"?"cm-list":"ag-list";
   if(state.sel && state.sel.name){
     const el = document.querySelector(`#${listId} .sitem[data-g="${state.sel.group}"][data-n="${CSS.escape(state.sel.name)}"]`);
@@ -438,6 +448,28 @@ function renderNatChips(){
   row.innerHTML = '<button class="fchip'+(state.curNat==="all"?" active":"")+'" data-k="all">全部性质</button>' +
     state.nats.map(c=>`<button class="fchip${state.curNat===c.key?" active":""}" data-k="${esc(c.key)}">${esc(c.label)} <span style="opacity:.6">${c.count}</span></button>`).join("");
   row.querySelectorAll(".fchip").forEach(f=>f.onclick=()=>{ state.curNat=f.dataset.k; renderTab("skills"); });
+}
+
+async function loadSessions(){
+  const box = $("#sessions"); if(!box) return;
+  try{
+    const j = await api("/sessions");
+    box.innerHTML = j.sessions.length ? j.sessions.map(s=>{
+      const stopped = s.last_user || s.last_assist || "（无文本记录）";
+      return `<div class="healthcard info" style="padding:12px 18px">
+        <div class="hrow">
+          <span class="hlevel">${fmtTime(s.mtime)}</span>
+          <span class="htitle">${esc(s.project)}</span>
+          ${s.mainline_task?`<span class="scat">主线：${esc(s.mainline_task)}</span>`:""}
+        </div>
+        <div class="hdetail">停在哪：${esc(stopped)}</div>
+        <div class="hpaths"><span class="mono">${esc(s.resume)}</span> <button class="fchip copybtn" data-cmd="${esc(s.resume)}">复制命令</button></div>
+      </div>`;
+    }).join("") : '<div class="empty">没有找到会话记录</div>';
+    box.querySelectorAll(".copybtn").forEach(b=>b.onclick=()=>{
+      navigator.clipboard.writeText(b.dataset.cmd).then(()=>{ b.textContent="已复制"; setTimeout(()=>b.textContent="复制命令",1500); }).catch(()=>prompt("复制此命令：", b.dataset.cmd));
+    });
+  }catch(e){ box.innerHTML = `<div class="empty">加载失败：${esc(e.message)}</div>`; }
 }
 
 function jumpSkill(name){

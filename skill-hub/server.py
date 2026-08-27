@@ -720,6 +720,91 @@ def sync():
     return {"ok": r.returncode == 0, "output": (r.stdout + r.stderr)[-2000:]}
 
 
+@app.get("/api/sessions")
+def list_sessions():
+    """断点恢复：扫描每个项目的会话记录，给出'停在哪'+恢复命令+主线任务。"""
+    out = []
+    projects_dir = HOME / ".claude" / "projects"
+    if not projects_dir.is_dir():
+        return {"sessions": out}
+    for pdir in projects_dir.iterdir():
+        if not pdir.is_dir():
+            continue
+        try:
+            files = sorted(pdir.glob("*.jsonl"), key=lambda f: f.stat().st_mtime, reverse=True)
+        except OSError:
+            continue
+        for f in files[:8]:
+            try:
+                st = f.stat()
+            except OSError:
+                continue
+            if st.st_size < 200:
+                continue
+            sid = f.stem
+            cwd, last_user, last_assist = "", "", ""
+            try:
+                with open(f, encoding="utf-8", errors="replace") as fh:
+                    fh.seek(max(0, st.st_size - 65536))
+                    tail = fh.read()
+                for line in tail.splitlines():
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        obj = json.loads(line)
+                    except ValueError:
+                        continue
+                    if not isinstance(obj, dict):
+                        continue
+                    c = obj.get("cwd")
+                    if c:
+                        cwd = str(c)
+                    t = obj.get("type")
+                    msg = obj.get("message")
+                    if t == "user" and isinstance(msg, dict):
+                        content = msg.get("content", "")
+                        if isinstance(content, list):
+                            txt = " ".join(
+                                str(b.get("text", "")) for b in content
+                                if isinstance(b, dict) and b.get("type") == "text"
+                            )
+                        else:
+                            txt = str(content)
+                        if txt.strip() and not txt.startswith("<"):
+                            last_user = txt.strip()[:200]
+                    elif t == "assistant" and isinstance(msg, dict):
+                        for b in msg.get("content", []) or []:
+                            if isinstance(b, dict) and b.get("type") == "text" and str(b.get("text", "")).strip():
+                                last_assist = str(b["text"]).strip()[:200]
+            except OSError:
+                pass
+            mainline_task = ""
+            if cwd:
+                ml = Path(cwd) / ".claude" / "autopilot" / "mainline.md"
+                if ml.is_file():
+                    try:
+                        text = ml.read_text(encoding="utf-8", errors="replace")
+                        m = re.search(r"##\s*当前任务\s*\n(.+?)(?=\n##|\Z)", text, re.S)
+                        if m:
+                            mainline_task = " ".join(m.group(1).split())[:120]
+                    except OSError:
+                        pass
+            out.append({
+                "session_id": sid,
+                "project": pdir.name,
+                "cwd": cwd,
+                "mtime": int(st.st_mtime),
+                "size": st.st_size,
+                "last_user": last_user,
+                "last_assist": last_assist,
+                "mainline_task": mainline_task,
+                "resume": f'cd "{cwd}" && claude --resume {sid}' if cwd else f"claude --resume {sid}",
+            })
+    out.sort(key=lambda s: -s["mtime"])
+    return {"sessions": out[:40]}
+
+
 @app.get("/api/categories")
 def list_categories():
     cats, nats = taxonomy_counts()
