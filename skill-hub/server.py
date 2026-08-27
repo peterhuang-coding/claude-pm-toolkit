@@ -726,24 +726,31 @@ def _norm_sid(v: str) -> str:
     return v.split("/")[-1]
 
 
-def active_session_ids() -> tuple:
-    """返回 (前台运行会话集合, 后台任务存活会话集合)。"""
-    fg, bg = set(), set()
+def session_process_flags() -> tuple:
+    """返回 (sid -> {"fork":bool,"agent":bool}, 后台任务目录前缀集合)。"""
+    flags, bg = {}, set()
     try:
         out_proc = subprocess.run(
             ["ps", "-Ao", "args"], capture_output=True, text=True, timeout=5
         ).stdout
     except (OSError, subprocess.TimeoutExpired):
-        return fg, bg
+        return flags, bg
     for line in out_proc.splitlines():
-        for m in re.finditer(r"--session-id\s+(\S+)", line):
-            fg.add(_norm_sid(m.group(1)))
-        for m in re.finditer(r"--resume\s+(\S+)", line):
-            fg.add(_norm_sid(m.group(1)))
+        fk = "--fork-session" in line
+        ag = bool(re.search(r"--agent(?:\s|$)", line))
+        sids = [m.group(1) for m in re.finditer(r"--session-id\s+(\S+)", line)]
+        if not sids:
+            sids = [m.group(1) for m in re.finditer(r"--resume\s+(\S+)", line)]
+        for raw in sids:
+            sid = _norm_sid(raw)
+            fl = flags.setdefault(sid, {})
+            if fk:
+                fl["fork"] = True
+            if ag:
+                fl["agent"] = True
         for m in re.finditer(r"\.claude/jobs/(\w[\w-]{5,})", line):
             bg.add(m.group(1))
-    bg -= fg
-    return fg, bg
+    return flags, bg
 
 
 @app.get("/api/sessions")
@@ -753,7 +760,7 @@ def list_sessions():
     projects_dir = HOME / ".claude" / "projects"
     if not projects_dir.is_dir():
         return {"sessions": out}
-    running, bg_running = active_session_ids()
+    running, bg_running = session_process_flags()
     for pdir in projects_dir.iterdir():
         if not pdir.is_dir():
             continue
@@ -844,6 +851,8 @@ def list_sessions():
                             mainline_task = " ".join(m.group(1).split())[:120]
                     except OSError:
                         pass
+            fl = running.get(sid, {})
+            is_bg_job = "claude-jobs" in pdir.name
             out.append({
                 "session_id": sid,
                 "project": pdir.name,
@@ -852,13 +861,18 @@ def list_sessions():
                 "size": st.st_size,
                 "active": sid in running,
                 "bg_active": any(sid.startswith(b) for b in bg_running),
+                "fork": bool(fl.get("fork")),
+                "agent": bool(fl.get("agent")),
+                "bg_job": is_bg_job,
+                "is_main": not fl.get("fork") and not fl.get("agent") and not is_bg_job,
                 "first_user": first_user,
                 "last_user": last_user,
                 "last_assist": last_assist,
                 "mainline_task": mainline_task,
                 "resume": f'cd "{cwd}" && claude --resume {sid}' if cwd else f"claude --resume {sid}",
             })
-    out.sort(key=lambda s: (-int(s["active"]), -int(s["bg_active"]), -s["mtime"]))
+    out.sort(key=lambda s: (-int(s["is_main"] and (s["active"] or s["bg_active"])),
+                            -int(s["active"] or s["bg_active"]), -s["mtime"]))
     return {"sessions": out[:40]}
 
 
