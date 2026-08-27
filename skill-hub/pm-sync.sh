@@ -66,6 +66,10 @@ else
   echo "pm-sync: committed"
 fi
 if [ "$PUSH" -eq 1 ]; then
-  git -c http.proxy="$PROXY" -c https.proxy="$PROXY" push -q origin main \
-    && echo "pm-sync: pushed"
+  if git -c http.proxy= -c https.proxy= push -q origin main 2>/dev/null; then
+    echo "pm-sync: pushed (direct)"
+  else
+    git -c http.proxy="$PROXY" -c https.proxy="$PROXY" push -q origin main \
+      && echo "pm-sync: pushed (proxy)"
+  fi
 fi
