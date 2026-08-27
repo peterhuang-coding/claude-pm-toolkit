@@ -147,13 +147,14 @@ main{flex:1;overflow:hidden;display:flex}
 </style>
 
 <header>
-  <div class="brand"><span class="dot"></span>skill-hub <small class="mono">:3458</small> <small class="mono" style="color:var(--ink-3);font-size:11px">v2.6</small></div>
+  <div class="brand"><span class="dot"></span>skill-hub <small class="mono">:3458</small> <small class="mono" style="color:var(--ink-3);font-size:11px">v2.7</small></div>
   <div class="tabs">
     <button class="tab active" data-tab="overview">总览</button>
     <button class="tab" data-tab="skills">Skills</button>
     <button class="tab" data-tab="commands">命令</button>
     <button class="tab" data-tab="agents">Agents</button>
     <button class="tab" data-tab="resume">断点</button>
+    <button class="tab" data-tab="providers">供应商</button>
   </div>
   <div class="spacer"></div>
   <button class="btn" id="btn-sync">同步到 GitHub</button>
@@ -228,6 +229,16 @@ main{flex:1;overflow:hidden;display:flex}
     </div>
   </div>
 
+  <!-- 供应商 -->
+  <div class="pane" id="pane-providers">
+    <div class="overview">
+      <div class="ov-title">供应商路由（llm-hub + pm-provider）</div>
+      <div id="router-card"></div>
+      <div class="ov-title" style="margin-top:22px">供应商健康 <button class="btn primary" id="btn-add-provider" style="margin-left:8px">＋ 添加 API</button></div>
+      <div id="provider-list"></div>
+    </div>
+  </div>
+
   <!-- Agents -->
   <div class="pane" id="pane-agents">
     <div class="twopane">
@@ -267,6 +278,25 @@ main{flex:1;overflow:hidden;display:flex}
     <div class="mfoot">
       <button class="btn" data-close="mask-create">取消</button>
       <button class="btn primary" id="cr-submit">创建</button>
+    </div>
+  </div>
+</div>
+
+<!-- 添加供应商弹窗 -->
+<div class="mask" id="mask-provider">
+  <div class="modal">
+    <div class="mhead">添加 API Provider</div>
+    <div class="mbody">
+      <div class="mfield"><label>Provider ID（小写英文+连字符）</label><input id="pv-id" class="mono" placeholder="qwen3"></div>
+      <div class="mfield"><label>API Key（只存 Keychain，绝不回显）</label><input id="pv-key" type="password" placeholder="sk-…"></div>
+      <div class="mfield"><label>Tier</label><select id="pv-tier" class="catselect" style="width:100%"><option value="payg">payg（按量）</option><option value="plan">plan（订阅/免费额度）</option></select></div>
+      <div class="mfield"><label>Base URL（可选）</label><input id="pv-url" class="mono" placeholder="https://api.xxx.com/v1"></div>
+      <div class="mfield"><label>模型（可选）</label><input id="pv-model" class="mono" placeholder="model-name"></div>
+      <div class="mfield"><label>类型</label><select id="pv-type" class="catselect" style="width:100%"><option value="openai">openai</option><option value="anthropic">anthropic</option></select></div>
+    </div>
+    <div class="mfoot">
+      <button class="btn" data-close="mask-provider">取消</button>
+      <button class="btn primary" id="pv-submit">添加</button>
     </div>
   </div>
 </div>
@@ -435,6 +465,7 @@ function renderTab(tab){
   if(tab==="commands") renderList("cm-list", state.commands, ()=>true);
   if(tab==="agents") renderList("ag-list", state.agents, ()=>true);
   if(tab==="resume") loadSessions();
+  if(tab==="providers") loadProviders();
   const listId = tab==="skills"?"sk-list":tab==="commands"?"cm-list":"ag-list";
   if(state.sel && state.sel.name){
     const el = document.querySelector(`#${listId} .sitem[data-g="${state.sel.group}"][data-n="${CSS.escape(state.sel.name)}"]`);
@@ -501,6 +532,59 @@ $("#btn-mainonly").onclick = function(){
   this.textContent = state.mainOnly ? "✓ 只显示主会话" : "显示全部会话";
   loadSessions();
 };
+
+async function loadProviders(){
+  const card = $("#router-card"), list = $("#provider-list");
+  if(!card || !list) return;
+  try{
+    const j = await api("/providers");
+    const r = j.router || {};
+    const modes = ["auto", ...j.providers.map(p=>p.id)];
+    const cooldown = Object.keys(r.cooldowns||{}).length ? `冷却中：${Object.keys(r.cooldowns).map(k=>k+"("+r.cooldowns[k]+"s)").join(", ")}` : "无冷却";
+    card.innerHTML = `<div class="healthcard info">
+      <div class="hrow">
+        <span class="chip running">${r.active?"路由活跃":"路由未激活"}</span>
+        <span class="htitle">模式：${esc(r.mode||"—")}</span>
+        <span class="scat">当前供应商：${esc(r.current_provider||"—")}</span>
+        <span class="scat">策略：${esc(j.strategy||"—")}</span>
+        <span class="scat">${esc(cooldown)}</span>
+      </div>
+      <div class="hdetail" style="margin-top:6px">切换路由：
+        ${modes.map(m=>`<button class="fchip usemode ${(r.mode||"")===m?"active":""}" data-m="${esc(m)}">${esc(m)}</button>`).join(" ")}
+      </div>
+      <div class="hdetail" style="margin-top:6px">切换策略：
+        ${["plan-then-payg","plan-only","payg-only"].map(s=>`<button class="fchip usestrategy ${j.strategy===s?"active":""}" data-s="${esc(s)}">${esc(s)}</button>`).join(" ")}
+      </div>
+    </div>`;
+    card.querySelectorAll(".usemode").forEach(b=>b.onclick=async ()=>{
+      try{ const x = await api("/providers/use",{body:{mode:b.dataset.m}}); toast(`已切换路由到 ${b.dataset.m}`,"ok"); loadProviders(); }catch(e){ toast(e.message,"err"); }
+    });
+    card.querySelectorAll(".usestrategy").forEach(b=>b.onclick=async ()=>{
+      try{ const x = await api("/providers/strategy",{body:{strategy:b.dataset.s}}); toast(`策略已改为 ${b.dataset.s}`,"ok"); loadProviders(); }catch(e){ toast(e.message,"err"); }
+    });
+    list.innerHTML = j.providers.length ? j.providers.map(p=>{
+      const ok = p.key_present && (p.error_rate===null || p.error_rate < 0.5);
+      const chip = ok ? '<span class="chip running">健康</span>' : '<span class="chip nat-api">异常</span>';
+      return `<div class="healthcard ${ok?"info":"error"}" style="border-left-color:${ok?"var(--ok)":"var(--err)"}">
+        <div class="hrow">
+          ${chip}
+          <span class="htitle">${esc(p.name)}</span>
+          <span class="chip user mono">${esc(p.id)}</span>
+          <span class="chip ${p.tier==="plan"?"nat-tool":"nat-api"}">${esc(p.tier||"—")}</span>
+          ${p.key_present?'<span class="scat">key ✓</span>':'<span class="chip nat-api">key ✗</span>'}
+          ${p.enabled?"":'<span class="chip nat-mixed">已禁用</span>'}
+        </div>
+        <div class="hdetail">
+          ${p.error_rate!==null?`错误率 ${(p.error_rate*100).toFixed(0)}% ｜ `:""}
+          ${p.p50!==null?`p50 ${p.p50}ms / p95 ${p.p95}ms ｜ `:""}
+          连续失败 ${p.failures} ｜ 今日花费 $${(p.daily_spend||0).toFixed(3)}${p.daily_budget!==null?` / $${p.daily_budget}`:""}
+          ${p.last_error?`<br><span class="mono">${esc(p.last_error)}</span>`:""}
+          ${p.base_url?`<br><span class="mono">${esc(p.base_url)}</span>`:""}
+        </div>
+      </div>`;
+    }).join("") : '<div class="empty">还没有注册供应商</div>';
+  }catch(e){ card.innerHTML = `<div class="empty">加载失败：${esc(e.message)}</div>`; }
+}
 
 function jumpSkill(name){
   renderTab("skills");
@@ -604,6 +688,12 @@ $("#cr-submit").onclick = async ()=>{
   const name=$("#cr-name").value.trim(), desc=$("#cr-desc").value.trim(), body=$("#cr-body").value;
   if(!name){ toast("请填写名称","err"); return; }
   try{ const j = await api("/skills",{body:{name,description:desc,content:body,template:$("#cr-tpl").value}}); toast(`已创建 ${j.name}`,"ok"); $("#mask-create").classList.remove("show"); await loadAll(); state.sel={group:"skill",name:j.name}; renderTab("skills"); openDetail("skills"); }catch(e){ toast(e.message,"err"); }
+};
+$("#btn-add-provider").onclick = ()=>{ $("#pv-id").value=""; $("#pv-key").value=""; $("#pv-url").value=""; $("#pv-model").value=""; $("#mask-provider").classList.add("show"); };
+$("#pv-submit").onclick = async ()=>{
+  const body = {id:$("#pv-id").value.trim(), key:$("#pv-key").value, tier:$("#pv-tier").value, base_url:$("#pv-url").value.trim(), model:$("#pv-model").value.trim(), type:$("#pv-type").value};
+  if(!body.id || !body.key){ toast("请填写 ID 和 API Key","err"); return; }
+  try{ const j = await api("/providers/add",{body}); toast(`已添加 ${j.id}（key 仅存 Keychain）`,"ok"); $("#mask-provider").classList.remove("show"); loadProviders(); }catch(e){ toast(e.message,"err"); }
 };
 $("#cp-submit").onclick = async ()=>{
   const nn=$("#cp-name").value.trim();

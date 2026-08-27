@@ -30,6 +30,8 @@ ARCHIVE = HUB / "archive"
 CATEGORIES_FILE = HUB / "categories.json"
 TEMPLATES_DIR = HUB / "templates"
 USAGE_FILE = HOME / ".claude" / "skill-usage.jsonl"
+LLM_HUB = HOME / "llm-hub"
+PM_PROVIDER = HOME / ".claude" / "skills" / "pm-orchestrator" / "scripts" / "pm-provider.py"
 
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 
@@ -751,6 +753,175 @@ def session_process_flags() -> tuple:
         for m in re.finditer(r"\.claude/jobs/(\w[\w-]{5,})", line):
             bg.add(m.group(1))
     return flags, bg
+
+
+def _llm_read(name: str) -> dict:
+    p = LLM_HUB / name
+    if p.is_file():
+        try:
+            d = json.loads(p.read_text(encoding="utf-8"))
+            return d if isinstance(d, dict) else {}
+        except (OSError, ValueError):
+            pass
+    return {}
+
+
+def _llm_write(name: str, data: dict) -> None:
+    (LLM_HUB / name).write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+@app.get("/api/providers")
+def list_providers():
+    prov = _llm_read("providers.json")
+    state = _llm_read("state.json")
+    merged = []
+    for pid, meta in prov.get("providers", {}).items():
+        if not isinstance(meta, dict):
+            continue
+        h = state.get("providers", {}).get(pid, {})
+        merged.append({
+            "id": pid,
+            "name": meta.get("name", pid),
+            "tier": h.get("tier") or meta.get("tier", ""),
+            "type": meta.get("type", ""),
+            "models": meta.get("models", []),
+            "base_url": meta.get("api_base_url", ""),
+            "enabled": bool(meta.get("enabled", True)),
+            "key_present": bool(h.get("key_present", False)),
+            "error_rate": h.get("recent_error_rate"),
+            "p50": h.get("recent_p50_ms"),
+            "p95": h.get("recent_p95_ms"),
+            "last_error": h.get("last_error"),
+            "failures": h.get("consecutive_failures", 0),
+            "daily_spend": h.get("daily_spend_usd", 0.0),
+            "daily_budget": h.get("daily_budget_usd"),
+            "quota_until": h.get("quota_exhausted_until", 0),
+            "circuit_until": h.get("circuit_open_until", 0),
+        })
+    merged.sort(key=lambda x: (0 if x["tier"] == "plan" else 1, x["id"]))
+    router = {}
+    if PM_PROVIDER.is_file():
+        try:
+            r = subprocess.run(
+                ["python3", str(PM_PROVIDER), "status", "--json"],
+                capture_output=True, text=True, timeout=10,
+            )
+            if r.returncode == 0:
+                router = json.loads(r.stdout) if r.stdout.strip() else {}
+        except (OSError, subprocess.TimeoutExpired, ValueError):
+            pass
+    return {
+        "strategy": state.get("strategy") or prov.get("strategy", ""),
+        "providers": merged,
+        "router": {
+            "active": router.get("active"),
+            "mode": router.get("mode"),
+            "current_provider": router.get("current_provider"),
+            "cooldowns": router.get("cooldowns", {}),
+        },
+    }
+
+
+class ProviderUseBody(BaseModel):
+    mode: str
+
+
+@app.post("/api/providers/use")
+def provider_use(body: ProviderUseBody):
+    mode = body.mode.strip()
+    if not mode:
+        raise HTTPException(400, "缺少 mode")
+    if not PM_PROVIDER.is_file():
+        raise HTTPException(400, "pm-provider.py 不存在")
+    r = subprocess.run(
+        ["python3", str(PM_PROVIDER), "use", mode],
+        capture_output=True, text=True, timeout=30,
+    )
+    if r.returncode != 0:
+        raise HTTPException(400, (r.stderr or r.stdout or "切换失败")[-300:])
+    return {"ok": True, "mode": mode, "output": (r.stdout or "")[-200:]}
+
+
+class ProviderStrategyBody(BaseModel):
+    strategy: str
+
+
+@app.post("/api/providers/strategy")
+def provider_strategy(body: ProviderStrategyBody):
+    if body.strategy not in ("plan-then-payg", "plan-only", "payg-only"):
+        raise HTTPException(400, f"未知策略: {body.strategy}")
+    prov = _llm_read("providers.json")
+    state = _llm_read("state.json")
+    prov["strategy"] = body.strategy
+    state["strategy"] = body.strategy
+    _llm_write("providers.json", prov)
+    _llm_write("state.json", state)
+    if PM_PROVIDER.is_file():
+        subprocess.run(
+            ["python3", str(PM_PROVIDER), "ensure"],
+            capture_output=True, text=True, timeout=30,
+        )
+    return {"ok": True, "strategy": body.strategy}
+
+
+class ProviderAddBody(BaseModel):
+    id: str
+    key: str
+    tier: str = "payg"
+    base_url: str = ""
+    model: str = ""
+    type: str = "openai"
+
+
+@app.post("/api/providers/add")
+def provider_add(body: ProviderAddBody):
+    pid = body.id.strip()
+    if not re.match(r"^[a-z0-9][a-z0-9-]{1,31}$", pid):
+        raise HTTPException(400, f"非法 provider id: {pid}")
+    if not body.key.strip():
+        raise HTTPException(400, "API key 为空")
+    prov = _llm_read("providers.json")
+    if pid in prov.get("providers", {}):
+        raise HTTPException(400, f"provider 已存在: {pid}")
+    # 1. key 进 Keychain（service=llm-hub, account=<id>）
+    r = subprocess.run(
+        ["security", "add-generic-password", "-s", "llm-hub", "-a", pid,
+         "-w", body.key.strip(), "-U"],
+        capture_output=True, text=True, timeout=15,
+    )
+    if r.returncode != 0:
+        raise HTTPException(400, f"Keychain 写入失败: {(r.stderr or '')[-200:]}")
+    # 2. providers.json 注册
+    ptype = body.type if body.type in ("openai", "anthropic") else "openai"
+    prov.setdefault("providers", {})[pid] = {
+        "name": pid,
+        "tier": body.tier if body.tier in ("plan", "payg") else "payg",
+        "type": ptype,
+        "api_base_url": body.base_url.strip(),
+        "keychain_account": pid,
+        "models": [body.model.strip()] if body.model.strip() else [],
+        "transformer": "Anthropic" if ptype == "anthropic" else "OpenAI",
+        "enabled": True,
+    }
+    prov["updated_at"] = now_ts()
+    _llm_write("providers.json", prov)
+    # 3. state.json 初始化健康条目
+    state = _llm_read("state.json")
+    state.setdefault("providers", {})[pid] = {
+        "enabled": True,
+        "key_present": True,
+        "tier": body.tier if body.tier in ("plan", "payg") else "payg",
+        "daily_spend_usd": 0.0,
+        "daily_budget_usd": None,
+        "recent_error_rate": 0.0,
+        "consecutive_failures": 0,
+        "last_error": None,
+        "quota_exhausted_until": 0,
+        "circuit_open_until": 0,
+    }
+    state["ts"] = int(time.time())
+    _llm_write("state.json", state)
+    return {"ok": True, "id": pid, "note": "已注册。key 仅存 Keychain，不回显。CCR 路由下次重启/探测后生效。"}
 
 
 @app.get("/api/sessions")
