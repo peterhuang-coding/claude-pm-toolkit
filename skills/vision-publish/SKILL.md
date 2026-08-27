@@ -1,9 +1,11 @@
 ---
+
 name: vision-publish
 description: >
   用视觉 Computer Use 控制真实浏览器完成网页发布与操作。Use when the user wants to
   publish, upload, submit or post content to a website, control a browser with AI
   vision, or asks about "computer use", "视觉发布", "自动发布", "控制页面", "AI 发内容".
+category: core
 ---
 
 # Vision Publish — 视觉 Computer Use 发布

@@ -10,6 +10,8 @@ or
 import json
 import re
 import shutil
+import subprocess
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -26,6 +28,8 @@ AGENTS_DIR = HOME / ".claude" / "agents"
 PLUGIN_CACHE = HOME / ".claude" / "plugins" / "cache"
 ARCHIVE = HUB / "archive"
 CATEGORIES_FILE = HUB / "categories.json"
+TEMPLATES_DIR = HUB / "templates"
+USAGE_FILE = HOME / ".claude" / "skill-usage.jsonl"
 
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 
@@ -36,6 +40,12 @@ class CreateBody(BaseModel):
     name: str
     description: str = ""
     content: str = ""
+    template: str = ""
+
+
+class TemplateBody(BaseModel):
+    name: str
+    template_name: str
 
 
 class SaveBody(BaseModel):
@@ -88,6 +98,61 @@ def is_bak(name: str) -> bool:
     return ".bak" in name
 
 
+def quality_issues(it: dict) -> list:
+    issues = []
+    desc = (it.get("description") or "").strip()
+    if not desc:
+        issues.append("无描述")
+    elif len(desc) < 15:
+        issues.append("描述过短")
+    low = desc.lower()
+    if not any(k in low for k in ("use when", "when the user", "when you", "触发", "用于", "适用于")):
+        issues.append("缺触发词")
+    if (it.get("size") or 0) > 20000:
+        issues.append("体积过大")
+    return issues
+
+
+def cheap_label(it: dict) -> str:
+    if it.get("nature") == "pe" and (it.get("size") or 0) < 8000:
+        return "省"
+    if it.get("nature") == "api" or (it.get("size") or 0) > 20000:
+        return "贵"
+    return "中"
+
+
+def load_usage() -> dict:
+    """Aggregate ~/.claude/skill-usage.jsonl into {name: {total, last7d, last30d, last_used}}."""
+    agg = {}
+    if not USAGE_FILE.is_file():
+        return agg
+    now = time.time()
+    try:
+        for line in USAGE_FILE.read_text(encoding="utf-8", errors="replace").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except ValueError:
+                continue
+            name = str(rec.get("skill", "")).strip()
+            if not name:
+                continue
+            a = agg.setdefault(name, {"total": 0, "last7d": 0, "last30d": 0, "last_used": 0})
+            a["total"] += 1
+            ts = rec.get("ts", 0)
+            if isinstance(ts, (int, float)) and now - ts < 7 * 86400:
+                a["last7d"] += 1
+            if isinstance(ts, (int, float)) and now - ts < 30 * 86400:
+                a["last30d"] += 1
+            if isinstance(ts, (int, float)) and ts > a["last_used"]:
+                a["last_used"] = ts
+    except OSError:
+        pass
+    return agg
+
+
 # ---------- taxonomy (category + nature) ----------
 
 def _taxonomy() -> dict:
@@ -99,28 +164,50 @@ def _taxonomy() -> dict:
     return {"categories": {}, "natures": {}, "skills": {}}
 
 
-def tax_for(name: str) -> tuple:
+def tax_for(name: str, raw_meta: dict = None) -> tuple:
     t = _taxonomy()
     entry = t.get("skills", {}).get(name, {})
     entry = entry if isinstance(entry, dict) else {}
-    cat = entry.get("category", "")
+    fm_cat = str((raw_meta or {}).get("category", "")) if isinstance(raw_meta, dict) else ""
+    cat = fm_cat or entry.get("category", "")
     nat = entry.get("nature", "")
     cats = t.get("categories", {})
     nats = t.get("natures", {})
-    return cat, cats.get(cat, ""), nat, nats.get(nat, "")
+    return cat, cats.get(cat, cat), nat, nats.get(nat, "")
 
 
-def taxonomy_counts() -> tuple:
+def upsert_frontmatter_field(text: str, key: str, value: str) -> str:
+    """Set (or remove when value='') a top-level field in a SKILL.md frontmatter block."""
+    if not text.startswith("---"):
+        return text
+    end = text.find("\n---", 3)
+    if end < 0:
+        return text
+    lines = text[3:end].splitlines()
+    out = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if line.strip().startswith(key + ":"):
+            i += 1
+            while i < len(lines) and lines[i][:1] in (" ", "\t"):
+                i += 1
+            continue
+        out.append(line)
+        i += 1
+    if value:
+        out.append(f"{key}: {value}")
+    return "---\n" + "\n".join(out).rstrip() + "\n---" + text[end + 4:]
+
+
+def taxonomy_counts(skills: list) -> tuple:
     t = _taxonomy()
-    names = {s["name"] for s in scan_skills()}
     cats = t.get("categories", {})
     nats = t.get("natures", {})
     cat_count, nat_count = {}, {}
-    for n in names:
-        e = t.get("skills", {}).get(n, {})
-        e = e if isinstance(e, dict) else {}
-        c = e.get("category", "")
-        k = e.get("nature", "")
+    for s in skills:
+        c = s.get("category", "")
+        k = s.get("nature", "")
         cat_count[c] = cat_count.get(c, 0) + 1
         nat_count[k] = nat_count.get(k, 0) + 1
     cat_out = [{"key": k, "label": v, "count": cat_count.get(k, 0)} for k, v in cats.items()]
@@ -257,8 +344,15 @@ def scan_skills() -> list:
                             "archivable": False,
                             **meta,
                         })
+    usage = load_usage()
     for it in items:
-        it["category"], it["category_label"], it["nature"], it["nature_label"] = tax_for(it["name"])
+        it["category"], it["category_label"], it["nature"], it["nature_label"] = tax_for(it["name"], it.get("raw_meta"))
+        u = usage.get(it["name"], {})
+        it["usage_total"] = u.get("total", 0)
+        it["usage_30d"] = u.get("last30d", 0)
+        it["last_used"] = u.get("last_used", 0)
+        it["quality_issues"] = quality_issues(it)
+        it["cheap"] = cheap_label(it)
     items.sort(key=lambda s: s["name"])
     return items
 
@@ -430,8 +524,16 @@ def overview():
         "health_error": len([h for h in build_health(skills) if h["level"] == "error"]),
         "health_warning": len([h for h in build_health(skills) if h["level"] == "warning"]),
     }
-    cats, nats = taxonomy_counts()
-    return {"counts": counts, "health": build_health(skills), "categories": cats, "natures": nats, "generated_at": now_ts()}
+    cats, nats = taxonomy_counts(skills)
+    usage_rank = [{"name": s["name"], "total": s["usage_total"], "last30d": s["usage_30d"]} for s in skills if s["usage_total"] > 0]
+    usage_rank.sort(key=lambda x: -x["total"])
+    unused_api = [s["name"] for s in skills if s["usage_total"] == 0 and s["nature"] == "api"]
+    unused_api.sort()
+    fix_candidates = [s for s in skills if s["group"] != "plugin" and s.get("quality_issues")]
+    fix_candidates.sort(key=lambda s: (-len(s["quality_issues"]), -(s.get("size") or 0)))
+    fix_list = [{"name": s["name"], "issues": s["quality_issues"], "cheap": s["cheap"], "usage": s["usage_total"]} for s in fix_candidates[:3]]
+    return {"counts": counts, "health": build_health(skills), "categories": cats, "natures": nats,
+            "usage_rank": usage_rank[:10], "unused_api": unused_api, "fix_list": fix_list, "generated_at": now_ts()}
 
 
 @app.get("/api/skills")
@@ -447,6 +549,42 @@ def get_skill(group: str, name: str):
     return {"name": name, "group": group, "path": str(md), "content": content}
 
 
+@app.get("/api/templates")
+def list_templates():
+    out = []
+    if not TEMPLATES_DIR.is_dir():
+        return {"templates": out}
+    for p in sorted(TEMPLATES_DIR.glob("*.md")):
+        try:
+            text = p.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        fm = parse_frontmatter(text)
+        body = text[text.find("\n---", 3) + 4:].strip() if text.startswith("---") else text
+        out.append({
+            "name": p.stem,
+            "title": (fm.get("name") or p.stem)[:80],
+            "preview": body[:120],
+        })
+    return {"templates": out}
+
+
+@app.post("/api/templates")
+def save_template(body: TemplateBody):
+    if not NAME_RE.match(body.template_name):
+        raise HTTPException(400, f"非法模板名: {body.template_name}")
+    p = resolve_skill("skill", body.name)
+    md = p / "SKILL.md"
+    if not md.is_file():
+        raise HTTPException(400, f"技能没有 SKILL.md: {body.name}")
+    content = md.read_text(encoding="utf-8", errors="replace")
+    content = upsert_frontmatter_field(content, "name", "{{name}}")
+    content = upsert_frontmatter_field(content, "description", "{{description}}")
+    TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
+    (TEMPLATES_DIR / f"{body.template_name}.md").write_text(content, encoding="utf-8")
+    return {"ok": True, "template": body.template_name}
+
+
 @app.post("/api/skills")
 def create_skill(body: CreateBody):
     name = body.name.strip()
@@ -456,12 +594,24 @@ def create_skill(body: CreateBody):
     if dest.exists():
         raise HTTPException(400, f"技能已存在: {name}")
     dest.mkdir(parents=True, exist_ok=True)
-    content = body.content.strip("\n")
-    if content.startswith("---"):
+    if body.template:
+        if not NAME_RE.match(body.template):
+            raise HTTPException(400, f"非法模板名: {body.template}")
+        tp = TEMPLATES_DIR / f"{body.template}.md"
+        if not tp.is_file():
+            raise HTTPException(400, f"模板不存在: {body.template}")
+        content = tp.read_text(encoding="utf-8", errors="replace")
+        content = content.replace("{{name}}", name).replace("{{description}}", body.description or "")
+        content = upsert_frontmatter_field(content, "name", name)
+        content = upsert_frontmatter_field(content, "description", body.description)
         final = content + "\n"
     else:
-        desc = body.description.strip().replace("\n", " ")
-        final = f"---\nname: {name}\ndescription: {desc}\n---\n\n{content}\n"
+        content = body.content.strip("\n")
+        if content.startswith("---"):
+            final = content + "\n"
+        else:
+            desc = body.description.strip().replace("\n", " ")
+            final = f"---\nname: {name}\ndescription: {desc}\n---\n\n{content}\n"
     (dest / "SKILL.md").write_text(final, encoding="utf-8")
     return {"ok": True, "name": name, "path": str(dest / "SKILL.md")}
 
@@ -555,6 +705,21 @@ def get_agent(name: str):
     return {"name": name, "path": str(p), "content": p.read_text(encoding="utf-8", errors="replace")}
 
 
+@app.post("/api/sync")
+def sync():
+    script = HUB / "pm-sync.sh"
+    if not script.is_file():
+        raise HTTPException(400, "pm-sync.sh 不存在")
+    try:
+        r = subprocess.run(
+            ["sh", str(script), "--push"],
+            capture_output=True, text=True, timeout=300,
+        )
+    except subprocess.TimeoutExpired:
+        raise HTTPException(500, "同步超时（300 秒）")
+    return {"ok": r.returncode == 0, "output": (r.stdout + r.stderr)[-2000:]}
+
+
 @app.get("/api/categories")
 def list_categories():
     cats, nats = taxonomy_counts()
@@ -584,6 +749,14 @@ def set_meta(body: MetaBody):
         entry.pop("nature", None)
     skills[body.name] = entry
     CATEGORIES_FILE.write_text(json.dumps(t, ensure_ascii=False, indent=2), encoding="utf-8")
+    # persist category into the skill's own frontmatter when it is the user's editable skill
+    p = SKILLS_DIR / body.name
+    if p.is_dir() and not p.is_symlink() and (p / "SKILL.md").is_file():
+        md = p / "SKILL.md"
+        text = md.read_text(encoding="utf-8", errors="replace")
+        updated = upsert_frontmatter_field(text, "category", body.category)
+        if updated != text:
+            md.write_text(updated, encoding="utf-8")
     return {"ok": True, "name": body.name, "category": entry.get("category", ""), "nature": entry.get("nature", "")}
 
 

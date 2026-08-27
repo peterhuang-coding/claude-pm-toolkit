@@ -291,6 +291,18 @@
     "autopilot": {
       "category": "core",
       "nature": "tool"
+    },
+    "grill-me": {
+      "category": "methodology",
+      "nature": "pe"
+    },
+    "grilling": {
+      "category": "methodology",
+      "nature": "pe"
+    },
+    "vision-publish": {
+      "category": "core",
+      "nature": "tool"
     }
   }
 }

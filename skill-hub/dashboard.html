@@ -154,6 +154,7 @@ main{flex:1;overflow:hidden;display:flex}
     <button class="tab" data-tab="agents">Agents</button>
   </div>
   <div class="spacer"></div>
+  <button class="btn" id="btn-sync">同步到 GitHub</button>
   <button class="btn" id="btn-refresh">刷新</button>
   <button class="btn primary" id="btn-new">＋ 新建 Skill</button>
 </header>
@@ -167,6 +168,12 @@ main{flex:1;overflow:hidden;display:flex}
       <div class="catlist" id="catdist"></div>
       <div class="ov-title" style="margin-top:22px">性质分布</div>
       <div class="catlist" id="natdist"></div>
+      <div class="ov-title" style="margin-top:22px">使用频次榜（会话结束后自动统计）</div>
+      <div id="usagerank"></div>
+      <div class="ov-title" style="margin-top:22px">最该修的 3 个（描述质量 / 省钱度）</div>
+      <div id="fixlist"></div>
+      <div class="ov-title" style="margin-top:22px">零使用预警（外部接口类）</div>
+      <div class="catlist" id="unusedapi"></div>
       <div class="ov-title" style="margin-top:22px">体检报告</div>
       <div id="health"></div>
     </div>
@@ -235,6 +242,10 @@ main{flex:1;overflow:hidden;display:flex}
         <input id="cr-desc" placeholder="Use when the user wants to …">
       </div>
       <div class="mfield">
+        <label>从模板新建（可选）</label>
+        <select id="cr-tpl" class="catselect" style="width:100%"></select>
+      </div>
+      <div class="mfield">
         <label>正文（Markdown，frontmatter 会自动生成）</label>
         <textarea id="cr-body" placeholder="# My Skill&#10;&#10;## 何时使用&#10;…"></textarea>
       </div>
@@ -269,7 +280,7 @@ main{flex:1;overflow:hidden;display:flex}
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
-const state = {tab:"overview", skills:[], commands:[], agents:[], sel:{}, dirty:false, cats:[], nats:[], curCat:"all", curNat:"all"};
+const state = {tab:"overview", skills:[], commands:[], agents:[], sel:{}, dirty:false, cats:[], nats:[], curCat:"all", curNat:"all", templates:[]};
 
 async function api(path, opts){
   const r = await fetch("/api"+path, opts ? {method:opts.method||"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(opts.body)} : undefined);
@@ -332,6 +343,7 @@ async function openDetail(tab){
 
   let actions = "";
   if(isSkill){
+    actions += `<button class="btn" id="act-tpl">存为模板</button>`;
     if(item.editable){
       actions += `<button class="btn primary" id="act-save">保存</button>`;
       actions += `<button class="btn danger" id="act-archive">归档</button>`;
@@ -355,6 +367,8 @@ async function openDetail(tab){
   if(item.target) rows.push(["目标", `<span class="mono">${esc(item.target)}</span>`]);
   if(tools.length) rows.push(["工具", tools.map(t=>`<span class="chip user">${esc(t)}</span>`).join(" ")]);
   if(isSkill){
+    rows.push(["使用", `${item.usage_total||0} 次（30天 ${item.usage_30d||0}）`], ["省钱度", esc(item.cheap||"—")]);
+    if(item.quality_issues && item.quality_issues.length) rows.push(["质量", item.quality_issues.map(i=>`<span class="chip nat-api">${esc(i)}</span>`).join(" ")]);
     const cOpts = state.cats.map(c=>`<option value="${esc(c.key)}" ${(item.category||"")===c.key?"selected":""}>${esc(c.label)}</option>`).join("");
     const nOpts = state.nats.map(c=>`<option value="${esc(c.key)}" ${(item.nature||"")===c.key?"selected":""}>${esc(c.label)}</option>`).join("");
     rows.push(["分类", `<select id="cat-sel" class="catselect">${cOpts}</select>`], ["性质", `<select id="nat-sel" class="catselect">${nOpts}</select>`]);
@@ -382,6 +396,12 @@ async function openDetail(tab){
   };
   const actC = $("#act-copy");
   if(actC) actC.onclick = ()=>{ $("#cp-name").value = n+"-mine"; $("#mask-copy").classList.add("show"); };
+  const actT2 = $("#act-tpl");
+  if(actT2) actT2.onclick = ()=>{
+    const tn = prompt(`把 ${n} 存为模板？模板名（小写英文+连字符）：`, n);
+    if(!tn) return;
+    api("/templates",{body:{name:n, template_name:tn.trim()}}).then(()=>{ toast("已存为模板","ok"); loadAll(); }).catch(e=>toast(e.message,"err"));
+  };
   const cs = $("#cat-sel"), ns = $("#nat-sel");
   if(cs) cs.onchange = ()=>setMeta({name:n, category:cs.value, nature:item.nature||""});
   if(ns) ns.onchange = ()=>setMeta({name:n, category:item.category||"", nature:ns.value});
@@ -420,6 +440,13 @@ function renderNatChips(){
   row.querySelectorAll(".fchip").forEach(f=>f.onclick=()=>{ state.curNat=f.dataset.k; renderTab("skills"); });
 }
 
+function jumpSkill(name){
+  renderTab("skills");
+  curSearch = name;
+  const inp = $("#sk-search"); if(inp) inp.value = name;
+  renderList("sk-list", state.skills, skillFilter());
+}
+
 let curFilter = "all", curSearch = "";
 function skillFilter(){
   return s=>{
@@ -436,9 +463,12 @@ function skillFilter(){
 
 async function loadAll(){
   try{
-    const [ov, sk, cm, ag] = await Promise.all([api("/overview"), api("/skills"), api("/commands"), api("/agents")]);
+    const [ov, sk, cm, ag, tp] = await Promise.all([api("/overview"), api("/skills"), api("/commands"), api("/agents"), api("/templates")]);
     state.skills = sk.items; state.commands = cm.items; state.agents = ag.items;
     state.cats = ov.categories || []; state.nats = ov.natures || [];
+    state.templates = tp.templates || [];
+    const tsel = $("#cr-tpl");
+    if(tsel) tsel.innerHTML = '<option value="">无模板（从空白开始）</option>' + state.templates.map(t=>`<option value="${esc(t.name)}">${esc(t.title)}</option>`).join("");
     renderOverview(ov);
     renderTab(state.tab);
     const still = state.sel && state.sel.name && state.tab!=="overview";
@@ -462,6 +492,15 @@ function renderOverview(ov){
   $("#natdist").innerHTML = ov.natures ? dist(ov.natures,"natjump") : "";
   document.querySelectorAll(".catjump").forEach(b=>b.onclick=()=>{ state.curCat=b.dataset.k; renderTab("skills"); });
   document.querySelectorAll(".natjump").forEach(b=>b.onclick=()=>{ state.curNat=b.dataset.k; renderTab("skills"); });
+  $("#fixlist").innerHTML = (ov.fix_list && ov.fix_list.length)
+    ? ov.fix_list.map(f=>`<div class="healthcard warning" style="border-left-color:var(--p2);padding:10px 16px"><div class="hrow"><span class="hlevel" style="background:var(--p2-soft);color:var(--p2)">该修</span><span class="htitle"><button class="fchip" onclick="jumpSkill('${esc(f.name)}')">${esc(f.name)}</button></span><span class="chip nat-${esc(f.cheap==="省"?"pe":f.cheap==="贵"?"api":"tool")}">${esc(f.cheap)}</span></div><div class="hdetail">${f.issues.map(esc).join(" · ")}${f.usage?` ｜ 已用 ${f.usage} 次`:""}</div></div>`).join("")
+    : '<div class="empty">没有明显问题</div>';
+  $("#usagerank").innerHTML = (ov.usage_rank && ov.usage_rank.length)
+    ? ov.usage_rank.map((u,i)=>`<div class="drow"><span class="k">${i+1}</span><span class="v"><span class="mono">${esc(u.name)}</span> · ${u.total} 次（30天 ${u.last30d}）</span></div>`).join("")
+    : '<div class="empty">还没有使用数据——会话结束后自动开始统计</div>';
+  $("#unusedapi").innerHTML = (ov.unused_api && ov.unused_api.length)
+    ? ov.unused_api.slice(0,10).map(n=>`<button class="fchip" onclick="jumpSkill('${esc(n)}')">${esc(n)}</button>`).join("") + (ov.unused_api.length>10?`<span class="fchip">+${ov.unused_api.length-10} 更多</span>`:"")
+    : "—";
   const h = ov.health;
   $("#health").innerHTML = h.length
     ? h.map(x=>`<div class="healthcard ${x.level}">
@@ -474,6 +513,15 @@ function renderOverview(ov){
 
 // events
 document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>renderTab(t.dataset.tab));
+$("#btn-sync").onclick = async ()=>{
+  $("#btn-sync").disabled = true;
+  toast("同步中…");
+  try{
+    const j = await api("/sync");
+    toast(j.ok ? "同步完成" : ("同步失败：" + j.output.slice(-120)), j.ok ? "ok" : "err");
+  }catch(e){ toast(e.message,"err"); }
+  finally{ $("#btn-sync").disabled = false; }
+};
 $("#btn-refresh").onclick = loadAll;
 $("#btn-new").onclick = ()=>{ $("#cr-name").value=""; $("#cr-desc").value=""; $("#cr-body").value=""; $("#mask-create").classList.add("show"); };
 document.querySelectorAll("[data-close]").forEach(b=>b.onclick=()=>$("#"+b.dataset.close).classList.remove("show"));
@@ -493,7 +541,7 @@ $("#sk-filters").querySelectorAll(".fchip").forEach(f=>f.onclick=()=>{
 $("#cr-submit").onclick = async ()=>{
   const name=$("#cr-name").value.trim(), desc=$("#cr-desc").value.trim(), body=$("#cr-body").value;
   if(!name){ toast("请填写名称","err"); return; }
-  try{ const j = await api("/skills",{body:{name,description:desc,content:body}}); toast(`已创建 ${j.name}`,"ok"); $("#mask-create").classList.remove("show"); await loadAll(); state.sel={group:"skill",name:j.name}; renderTab("skills"); openDetail("skills"); }catch(e){ toast(e.message,"err"); }
+  try{ const j = await api("/skills",{body:{name,description:desc,content:body,template:$("#cr-tpl").value}}); toast(`已创建 ${j.name}`,"ok"); $("#mask-create").classList.remove("show"); await loadAll(); state.sel={group:"skill",name:j.name}; renderTab("skills"); openDetail("skills"); }catch(e){ toast(e.message,"err"); }
 };
 $("#cp-submit").onclick = async ()=>{
   const nn=$("#cp-name").value.trim();
