@@ -720,13 +720,40 @@ def sync():
     return {"ok": r.returncode == 0, "output": (r.stdout + r.stderr)[-2000:]}
 
 
+def _norm_sid(v: str) -> str:
+    if v.endswith(".jsonl"):
+        return Path(v).stem
+    return v.split("/")[-1]
+
+
+def active_session_ids() -> tuple:
+    """返回 (前台运行会话集合, 后台任务存活会话集合)。"""
+    fg, bg = set(), set()
+    try:
+        out_proc = subprocess.run(
+            ["ps", "-Ao", "args"], capture_output=True, text=True, timeout=5
+        ).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return fg, bg
+    for line in out_proc.splitlines():
+        for m in re.finditer(r"--session-id\s+(\S+)", line):
+            fg.add(_norm_sid(m.group(1)))
+        for m in re.finditer(r"--resume\s+(\S+)", line):
+            fg.add(_norm_sid(m.group(1)))
+        for m in re.finditer(r"\.claude/jobs/(\w[\w-]{5,})", line):
+            bg.add(m.group(1))
+    bg -= fg
+    return fg, bg
+
+
 @app.get("/api/sessions")
 def list_sessions():
-    """断点恢复：扫描每个项目的会话记录，给出'停在哪'+恢复命令+主线任务。"""
+    """断点恢复：扫描每个项目的会话记录，给出'停在哪'+恢复命令+主线任务+是否在跑。"""
     out = []
     projects_dir = HOME / ".claude" / "projects"
     if not projects_dir.is_dir():
         return {"sessions": out}
+    running, bg_running = active_session_ids()
     for pdir in projects_dir.iterdir():
         if not pdir.is_dir():
             continue
@@ -742,7 +769,34 @@ def list_sessions():
             if st.st_size < 200:
                 continue
             sid = f.stem
-            cwd, last_user, last_assist = "", "", ""
+            cwd, last_user, last_assist, first_user = "", "", "", ""
+            try:
+                with open(f, encoding="utf-8", errors="replace") as fh:
+                    head = fh.read(32768)
+                for line in head.splitlines():
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        obj = json.loads(line)
+                    except ValueError:
+                        continue
+                    if isinstance(obj, dict) and obj.get("type") == "user":
+                        msg = obj.get("message")
+                        if isinstance(msg, dict):
+                            content = msg.get("content", "")
+                            if isinstance(content, list):
+                                txt = " ".join(
+                                    str(b.get("text", "")) for b in content
+                                    if isinstance(b, dict) and b.get("type") == "text"
+                                )
+                            else:
+                                txt = str(content)
+                            if txt.strip() and not txt.startswith("<"):
+                                first_user = txt.strip()[:160]
+                                break
+            except OSError:
+                pass
             try:
                 with open(f, encoding="utf-8", errors="replace") as fh:
                     fh.seek(max(0, st.st_size - 65536))
@@ -796,12 +850,15 @@ def list_sessions():
                 "cwd": cwd,
                 "mtime": int(st.st_mtime),
                 "size": st.st_size,
+                "active": sid in running,
+                "bg_active": any(sid.startswith(b) for b in bg_running),
+                "first_user": first_user,
                 "last_user": last_user,
                 "last_assist": last_assist,
                 "mainline_task": mainline_task,
                 "resume": f'cd "{cwd}" && claude --resume {sid}' if cwd else f"claude --resume {sid}",
             })
-    out.sort(key=lambda s: -s["mtime"])
+    out.sort(key=lambda s: (-int(s["active"]), -int(s["bg_active"]), -s["mtime"]))
     return {"sessions": out[:40]}
 
 
