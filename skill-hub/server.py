@@ -924,6 +924,97 @@ def provider_add(body: ProviderAddBody):
     return {"ok": True, "id": pid, "note": "已注册。key 仅存 Keychain，不回显。CCR 路由下次重启/探测后生效。"}
 
 
+KNOWN_SERVICES = {
+    "3458": ("skill-hub 总控台", "http://127.0.0.1:3458"),
+    "3456": ("CCR 模型路由", "http://127.0.0.1:3456"),
+    "3457": ("llm-hub 仪表盘", "http://127.0.0.1:3457"),
+    "8787": ("tastegraph 视觉采样", "http://127.0.0.1:8787"),
+    "8767": ("amsterdam 地图原型", "http://127.0.0.1:8767"),
+    "8768": ("jp-us-arb 机票 API", "http://127.0.0.1:8768"),
+    "8769": ("jp-us-arb 机票 API 2", "http://127.0.0.1:8769"),
+    "56400": ("moodboard 可视化", "http://127.0.0.1:56400"),
+    "7897": ("Clash Verge 代理", "socks5://127.0.0.1:7897"),
+    "33331": ("Clash 控制端口", "http://127.0.0.1:33331"),
+    "10000": ("网盘服务", "http://127.0.0.1:10000"),
+    "9010": ("LG Hub", "http://127.0.0.1:9010"),
+}
+SKIP_SERVICES = {
+    "launchd", "ControlCe", "ARDAgent", "rapportd", "distnoted", "WiFi",
+    "AirPort", "sharingd", "CalendarA", "Sidecar", "universalaccessd",
+    "coreaudiod", "biometrickitd", "identityservicesd", "remoted",
+    # 桌面应用内部端口（不是 web 服务）
+    "WeChat", "Spotify", "Electron", "Doubao",
+}
+
+
+def infer_service(port: str, cmd: str, args: str) -> tuple:
+    if port in KNOWN_SERVICES:
+        return KNOWN_SERVICES[port]
+    m = re.search(r"uvicorn\s+([\w.]+)(?::app)?", args)
+    if m:
+        return f"uvicorn: {m.group(1)}", f"http://127.0.0.1:{port}"
+    m = re.search(r"http\.server\s+\d+.*?--directory\s+([\"'])([^\"']+)\1", args)
+    if m:
+        return f"静态站点: {Path(m.group(2)).name}", f"http://127.0.0.1:{port}"
+    if "python" in cmd and ("http.server" in args or "http_server" in args):
+        return f"{cmd} http 服务", f"http://127.0.0.1:{port}"
+    if cmd == "node" or "node" in args:
+        return "node 服务", f"http://127.0.0.1:{port}"
+    return f"{cmd} 进程", f"http://127.0.0.1:{port}"
+
+
+@app.get("/api/services")
+def list_services():
+    out = []
+    try:
+        r = subprocess.run(
+            ["/usr/sbin/lsof", "-iTCP", "-sTCP:LISTEN", "-P", "-n"],
+            capture_output=True, text=True, timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return {"services": out, "error": str(e)}
+    raw = r.stdout
+    if not raw:
+        return {"services": out, "error": f"lsof rc={r.returncode} stderr={r.stderr[:200]!r}"}
+    seen = {}
+    for line in raw.splitlines()[1:]:
+        p = line.split()
+        if len(p) < 9:
+            continue
+        cmd, pid, addr = p[0], p[1], p[8]
+        if cmd in SKIP_SERVICES:
+            continue
+        if "claude" in cmd.lower() or "claude" in (p[-1] if len(p) > 9 else ""):
+            continue
+        m = re.match(r"^(\S+):(\d+)$", addr)
+        if not m:
+            continue
+        host, port = m.group(1), m.group(2)
+        if port in seen:
+            continue
+        args = ""
+        try:
+            args = subprocess.run(
+                ["/bin/ps", "-p", pid, "-o", "args="],
+                capture_output=True, text=True, timeout=3,
+            ).stdout.strip()[:240]
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+        if "claude" in args.lower():
+            continue
+        name, url = infer_service(port, cmd, args)
+        seen[port] = {
+            "port": int(port),
+            "host": "0.0.0.0" if host == "*" else host,
+            "process": cmd,
+            "pid": int(pid),
+            "name": name,
+            "url": url,
+            "args": args,
+        }
+    return {"services": sorted(seen.values(), key=lambda x: x["port"])}
+
+
 @app.get("/api/sessions")
 def list_sessions():
     """断点恢复：扫描每个项目的会话记录，给出'停在哪'+恢复命令+主线任务+是否在跑。"""

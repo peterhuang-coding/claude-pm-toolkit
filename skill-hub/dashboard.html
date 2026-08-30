@@ -147,7 +147,7 @@ main{flex:1;overflow:hidden;display:flex}
 </style>
 
 <header>
-  <div class="brand"><span class="dot"></span>skill-hub <small class="mono">:3458</small> <small class="mono" style="color:var(--ink-3);font-size:11px">v2.7</small></div>
+  <div class="brand"><span class="dot"></span>skill-hub <small class="mono">:3458</small> <small class="mono" style="color:var(--ink-3);font-size:11px">v2.8</small></div>
   <div class="tabs">
     <button class="tab active" data-tab="overview">总览</button>
     <button class="tab" data-tab="skills">Skills</button>
@@ -171,6 +171,8 @@ main{flex:1;overflow:hidden;display:flex}
       <div class="catlist" id="catdist"></div>
       <div class="ov-title" style="margin-top:22px">性质分布</div>
       <div class="catlist" id="natdist"></div>
+      <div class="ov-title" style="margin-top:22px">运行中的服务</div>
+      <div id="services"></div>
       <div class="ov-title" style="margin-top:22px">使用频次榜（会话结束后自动统计）</div>
       <div id="usagerank"></div>
       <div class="ov-title" style="margin-top:22px">最该修的 3 个（描述质量 / 省钱度）</div>
@@ -638,6 +640,16 @@ function renderOverview(ov){
   $("#natdist").innerHTML = ov.natures ? dist(ov.natures,"natjump") : "";
   document.querySelectorAll(".catjump").forEach(b=>b.onclick=()=>{ state.curCat=b.dataset.k; renderTab("skills"); });
   document.querySelectorAll(".natjump").forEach(b=>b.onclick=()=>{ state.curNat=b.dataset.k; renderTab("skills"); });
+  api("/services").then(j=>{
+    $("#services").innerHTML = (j.services && j.services.length)
+      ? j.services.map(s=>`<div class="healthcard info" style="padding:8px 14px"><div class="hrow">
+          <span class="chip user mono">:${s.port}</span>
+          <span class="htitle">${esc(s.name)}</span>
+          <span class="scat">${esc(s.process)} (${s.pid})</span>
+          ${s.url?`<a href="${esc(s.url)}" target="_blank" rel="noopener" style="font-size:12px">${esc(s.url)} ↗</a>`:""}
+        </div></div>`).join("")
+      : '<div class="empty">没有检测到监听端口</div>';
+  }).catch(()=>{ $("#services").innerHTML = '<div class="empty">服务扫描失败</div>'; });
   $("#fixlist").innerHTML = (ov.fix_list && ov.fix_list.length)
     ? ov.fix_list.map(f=>`<div class="healthcard warning" style="border-left-color:var(--p2);padding:10px 16px"><div class="hrow"><span class="hlevel" style="background:var(--p2-soft);color:var(--p2)">该修</span><span class="htitle"><button class="fchip" onclick="jumpSkill('${esc(f.name)}')">${esc(f.name)}</button></span><span class="chip nat-${esc(f.cheap==="省"?"pe":f.cheap==="贵"?"api":"tool")}">${esc(f.cheap)}</span></div><div class="hdetail">${f.issues.map(esc).join(" · ")}${f.usage?` ｜ 已用 ${f.usage} 次`:""}</div></div>`).join("")
     : '<div class="empty">没有明显问题</div>';
