@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "comment": "Rule router config (M2 implements hard-filter + soft-score). Weights here are defaults; SLA templates override per task.",
+  "hard_filters": [
+    "capability_matches_task_type",
+    "data_sensitivity_allows_offdevice",
+    "risk_level_allows_capability",
+    "side_effect_limit_satisfied",
+    "context_fits_capability_window",
+    "deadline_feasible_with_eta",
+    "budget_covers_price"
+  ],
+  "soft_score_fields": [
+    "historical_quality",
+    "estimated_eta",
+    "full_chain_cost",
+    "quota_remaining",
+    "cache_hit",
+    "health"
+  ],
+  "default_weights": { "cost": 0.3, "latency": 0.3, "quality": 0.4 },
+  "fallback": {
+    "on_quota_exhausted": ["wait_capacity", "fallback_chain", "switch_paid", "needs_decision"],
+    "on_verification_failed": ["reroute_upgrade", "retry_same", "needs_decision"]
+  }
+}
