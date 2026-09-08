@@ -19,9 +19,10 @@ from taskrouter import db  # noqa: E402
 def conn():
     c = db.connect()
     db.init_db(c)
-    # Start each test with an empty, migrated database.
+    # Start each test with an empty, migrated database. Children first
+    # (capabilities reference providers; events/attempts reference tasks).
     for table in (
-        "quota_ledger", "route_decisions", "providers", "capabilities",
+        "quota_ledger", "route_decisions", "capabilities", "providers",
         "decisions", "evaluations", "artifacts", "events", "attempts",
         "harness_registry", "context_packs", "tasks",
     ):
