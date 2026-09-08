@@ -13,7 +13,7 @@ from typing import Optional
 
 from . import config
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 # --- DDL ---------------------------------------------------------------------
 # All core objects from the PRD: Task, Context Pack, Harness, Attempt, Event,
@@ -30,6 +30,7 @@ _TABLES = [
         sla_template    TEXT NOT NULL,
         contract        TEXT NOT NULL,            -- JSON: full Task Contract
         status          TEXT NOT NULL DEFAULT 'draft',
+        wait_reason     TEXT,                     -- e.g. 'awaiting-adapter' (M2 park marker)
         priority        INTEGER NOT NULL DEFAULT 0,
         created_at      TEXT NOT NULL,
         updated_at      TEXT NOT NULL,
@@ -138,7 +139,11 @@ _TABLES = [
         id          TEXT PRIMARY KEY,
         name        TEXT NOT NULL UNIQUE,
         kind        TEXT NOT NULL,                -- model_api|cli_agent|local_tool|search|crawler|computer_use|mcp
-        adapter     TEXT NOT NULL,                -- adapter module key (M2/M3)
+        adapter     TEXT NOT NULL,                -- adapter module key ('none' = registered, adapter lands in M3)
+        task_types  TEXT NOT NULL DEFAULT '[]',   -- JSON: task/output types this capability can serve
+        supports    TEXT NOT NULL DEFAULT '{}',   -- JSON: local_only/risk_levels/side_effects/deterministic/context_window
+        provider_id TEXT REFERENCES providers(id),
+        models      TEXT NOT NULL DEFAULT '[]',   -- JSON model ids (model_api capabilities)
         config      TEXT NOT NULL DEFAULT '{}',   -- JSON, non-secret only
         enabled     INTEGER NOT NULL DEFAULT 1,
         created_at  TEXT NOT NULL
@@ -148,11 +153,20 @@ _TABLES = [
     CREATE TABLE IF NOT EXISTS providers (
         id             TEXT PRIMARY KEY,
         name           TEXT NOT NULL UNIQUE,
+        source         TEXT NOT NULL DEFAULT 'standalone', -- llm_hub | standalone
+        tier           TEXT,                      -- plan | payg (synced from llm-hub when source=llm_hub)
+        ptype          TEXT,                      -- openai | anthropic | ... (llm-hub 'type')
         base_url       TEXT,
-        credential_ref TEXT,                      -- Keychain reference ONLY, never the secret
+        keychain_service TEXT,                    -- Keychain service reference ONLY, never the secret
+        keychain_account TEXT,                    -- Keychain account reference ONLY, never the secret
+        env_var        TEXT,                      -- env var name reference ONLY, never the secret
+        credential_ref TEXT,                      -- human-readable credential pointer (non-secret)
         pricing        TEXT NOT NULL DEFAULT '{}',-- JSON per-model price
         quota          TEXT NOT NULL DEFAULT '{}',-- JSON: limits/balance/reset_at/rpm/tpm
-        health         TEXT NOT NULL DEFAULT 'unknown', -- unknown|healthy|degraded|cooldown|exhausted
+        health         TEXT NOT NULL DEFAULT '{}',-- JSON health snapshot from llm-hub/local probe
+        health_status  TEXT NOT NULL DEFAULT 'unknown', -- unknown|healthy|degraded|cooldown|exhausted
+        key_present    INTEGER,                   -- bool snapshot; NULL = never probed
+        last_synced_at TEXT,
         created_at     TEXT NOT NULL
     )
     """,
@@ -161,12 +175,15 @@ _TABLES = [
         id              TEXT PRIMARY KEY,
         task_id         TEXT NOT NULL REFERENCES tasks(id),
         attempt_id      TEXT REFERENCES attempts(id),
-        candidates      TEXT NOT NULL DEFAULT '[]',   -- JSON candidate capabilities
+        candidates      TEXT NOT NULL DEFAULT '[]',   -- JSON candidate capabilities (pass+fail, with reasons/scores)
         exclusions      TEXT NOT NULL DEFAULT '{}',   -- JSON capability -> exclude reason
         scores          TEXT NOT NULL DEFAULT '{}',   -- JSON capability -> score breakdown
         chosen_capability TEXT,
         chosen_provider   TEXT,
-        fallback_chain  TEXT NOT NULL DEFAULT '[]',   -- JSON ordered fallback ids
+        fallback_chain  TEXT NOT NULL DEFAULT '[]',   -- JSON ordered [{capability,provider}]
+        rules_version   TEXT,                         -- router_rules.json version used
+        forced          TEXT NOT NULL DEFAULT '{}',   -- JSON {force:[...], ban:[...]} applied
+        chosen_reason   TEXT,
         created_at      TEXT NOT NULL
     )
     """,
@@ -192,11 +209,35 @@ _INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_artifacts_task ON artifacts(task_id)",
     "CREATE INDEX IF NOT EXISTS idx_decisions_status ON decisions(status)",
     "CREATE INDEX IF NOT EXISTS idx_quota_provider ON quota_ledger(provider_id)",
+    "CREATE INDEX IF NOT EXISTS idx_route_decisions_task ON route_decisions(task_id, created_at)",
 ]
 
 # Migrations keyed by the version they upgrade FROM. v0 -> v1 is full DDL above.
 _MIGRATIONS = {
-    # 1: ("ALTER TABLE ...", ...),  # example for future bumps
+    # v1 -> v2 (M2): provider/capability/route-decision/task columns for the
+    # registry + rule router.
+    1: (
+        "ALTER TABLE tasks ADD COLUMN wait_reason TEXT",
+        "ALTER TABLE providers ADD COLUMN source TEXT NOT NULL DEFAULT 'standalone'",
+        "ALTER TABLE providers ADD COLUMN tier TEXT",
+        "ALTER TABLE providers ADD COLUMN ptype TEXT",
+        "ALTER TABLE providers ADD COLUMN keychain_service TEXT",
+        "ALTER TABLE providers ADD COLUMN keychain_account TEXT",
+        "ALTER TABLE providers ADD COLUMN env_var TEXT",
+        # NOTE: v1 already has a `health` column (string); M2 reuses it to store
+        # the JSON health snapshot and adds health_status for the summary.
+        "ALTER TABLE providers ADD COLUMN health_status TEXT NOT NULL DEFAULT 'unknown'",
+        "ALTER TABLE providers ADD COLUMN key_present INTEGER",
+        "ALTER TABLE providers ADD COLUMN last_synced_at TEXT",
+        "ALTER TABLE capabilities ADD COLUMN task_types TEXT NOT NULL DEFAULT '[]'",
+        "ALTER TABLE capabilities ADD COLUMN supports TEXT NOT NULL DEFAULT '{}'",
+        "ALTER TABLE capabilities ADD COLUMN provider_id TEXT REFERENCES providers(id)",
+        "ALTER TABLE capabilities ADD COLUMN models TEXT NOT NULL DEFAULT '[]'",
+        "ALTER TABLE route_decisions ADD COLUMN rules_version TEXT",
+        "ALTER TABLE route_decisions ADD COLUMN forced TEXT NOT NULL DEFAULT '{}'",
+        "ALTER TABLE route_decisions ADD COLUMN chosen_reason TEXT",
+        "CREATE INDEX IF NOT EXISTS idx_route_decisions_task ON route_decisions(task_id, created_at)",
+    ),
 }
 
 
@@ -228,6 +269,9 @@ def init_db(conn: Optional[sqlite3.Connection] = None) -> sqlite3.Connection:
             conn.execute(ddl)
         for idx in _INDEXES:
             conn.execute(idx)
+        if current == 0:
+            # Brand-new database: the DDL above is already the latest schema.
+            current = SCHEMA_VERSION
         while current < SCHEMA_VERSION:
             for stmt in _MIGRATIONS.get(current, ()):
                 conn.execute(stmt)

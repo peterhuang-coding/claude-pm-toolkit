@@ -1,0 +1,136 @@
+{
+  "version": 1,
+  "comment": "Capability/Provider registry seed (M2). Contains NO secrets: only Keychain references (service/account) and env var NAMES. Providers with source=llm_hub are synced read-only from llm-hub (/api/health, /api/budget); standalone providers are local and probed locally. adapter values name the M3 adapter module; adapter_ready=false means the capability is registered for routing but cannot execute yet.",
+  "providers": [
+    {
+      "id": "deepseek",
+      "name": "DeepSeek (via llm-hub)",
+      "source": "llm_hub",
+      "tier": "payg",
+      "ptype": "openai",
+      "base_url": "https://api.deepseek.com",
+      "keychain_service": "llm-hub",
+      "keychain_account": "deepseek",
+      "env_var": "LLMHUB_KEY_DEEPSEEK",
+      "models": ["deepseek-chat"],
+      "pricing": {
+        "deepseek-chat": {"input_per_mtok_usd": 0.28, "output_per_mtok_usd": 0.42, "estimated": true}
+      }
+    },
+    {
+      "id": "openrouter",
+      "name": "OpenRouter (via llm-hub)",
+      "source": "llm_hub",
+      "tier": "payg",
+      "ptype": "openai",
+      "base_url": "https://openrouter.ai/api/v1",
+      "keychain_service": "llm-hub",
+      "keychain_account": "openrouter",
+      "env_var": "LLMHUB_KEY_OPENROUTER",
+      "models": ["anthropic/claude-sonnet-5"],
+      "pricing": {
+        "anthropic/claude-sonnet-5": {"input_per_mtok_usd": 3.0, "output_per_mtok_usd": 15.0, "estimated": true}
+      }
+    },
+    {
+      "id": "local",
+      "name": "Local machine (built-in capabilities)",
+      "source": "standalone",
+      "tier": "local",
+      "ptype": null,
+      "base_url": null,
+      "keychain_service": null,
+      "keychain_account": null,
+      "env_var": null,
+      "models": [],
+      "pricing": {}
+    }
+  ],
+  "capabilities": [
+    {
+      "id": "llm-deepseek",
+      "name": "DeepSeek Chat (OpenAI-compatible, via llm-hub)",
+      "kind": "model_api",
+      "adapter": "openai_api",
+      "adapter_ready": false,
+      "provider_id": "deepseek",
+      "task_types": ["text", "chat"],
+      "tags": ["free_model_api", "cheap_model_api", "capable_model_api", "verifier_model", "batch"],
+      "models": ["deepseek-chat"],
+      "supports": {
+        "cloud": true,
+        "risk_levels": ["low", "medium"],
+        "side_effects": ["none"],
+        "context_window": 128000,
+        "deterministic": false
+      },
+      "est_latency_ms": 1500,
+      "quality": 0.7,
+      "config": {}
+    },
+    {
+      "id": "llm-openrouter",
+      "name": "Claude Sonnet 5 via OpenRouter (OpenAI-compatible, via llm-hub)",
+      "kind": "model_api",
+      "adapter": "openai_api",
+      "adapter_ready": false,
+      "provider_id": "openrouter",
+      "task_types": ["text", "chat"],
+      "tags": ["capable_model_api", "parallel_second_model", "verifier_model", "research_agent"],
+      "models": ["anthropic/claude-sonnet-5"],
+      "supports": {
+        "cloud": true,
+        "risk_levels": ["low", "medium"],
+        "side_effects": ["none"],
+        "context_window": 200000,
+        "deterministic": false
+      },
+      "est_latency_ms": 2500,
+      "quality": 0.9,
+      "config": {}
+    },
+    {
+      "id": "claude-code",
+      "name": "Claude Code CLI (local agent; adapter lands in M3)",
+      "kind": "cli_agent",
+      "adapter": "claude_cli",
+      "adapter_ready": false,
+      "provider_id": "local",
+      "task_types": ["text", "code_change"],
+      "tags": ["local_model", "capable_model_api", "research_agent", "verifier_model", "batch"],
+      "models": [],
+      "supports": {
+        "cloud": false,
+        "risk_levels": ["low", "medium", "high"],
+        "side_effects": ["none", "approved_only"],
+        "context_window": 200000,
+        "deterministic": false
+      },
+      "est_latency_ms": 30000,
+      "quality": 0.95,
+      "config": {"binary": "claude", "note": "runs locally; traffic via pm-provider/CCR, not billed through llm-hub"}
+    },
+    {
+      "id": "url-fetch",
+      "name": "URL fetch (deterministic local tool; adapter lands in M3)",
+      "kind": "local_tool",
+      "adapter": "deterministic",
+      "adapter_ready": false,
+      "provider_id": "local",
+      "task_types": ["url_fetch", "data_extract"],
+      "tags": ["url_fetch", "search_api"],
+      "models": [],
+      "supports": {
+        "cloud": false,
+        "risk_levels": ["low"],
+        "side_effects": ["none"],
+        "context_window": null,
+        "deterministic": true,
+        "egress": "url_only"
+      },
+      "est_latency_ms": 800,
+      "quality": 0.6,
+      "config": {"note": "P0 stand-in for search/crawler (frozen AC3 decision): fetches a known URL, no open-web search"}
+    }
+  ]
+}
