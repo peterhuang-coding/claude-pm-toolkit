@@ -98,6 +98,25 @@ def cmd_show(args) -> None:
     print(f"contract: deadline={c['deadline_seconds']}s correctness={c['correctness_target']} "
           f"max_cost=${c['max_cost_usd']} allow_paid={c['allow_paid']} "
           f"risk={c['risk_level']} delivery={c['delivery_mode']}")
+    if task.get("wait_reason"):
+        print(f"wait_reason: {task['wait_reason']}")
+    rd = task.get("route_decision")
+    if rd:
+        print(f"route decision {rd['id']} ({rd['rules_version']}, {rd['chosen_reason']}):")
+        for c in rd["candidates"]:
+            mark = "PASS" if c["hard_pass"] else "EXCL"
+            reasons = ",".join(c["excluded_reasons"]) if c["excluded_reasons"] else ""
+            forced = " [FORCED]" if c.get("forced") else ""
+            print(f"  [{mark}] {c['capability_id']:16s} provider={str(c.get('provider_id')):10s} "
+                  f"total={c['scores']['total']:.3f} cost=${c['est']['cost_usd']:.5f} "
+                  f"eta={c['est']['latency_ms']:.0f}ms avail={c['availability']}{forced}")
+            if reasons:
+                print(f"         excluded: {reasons}")
+        chain = " -> ".join(f["capability_id"] for f in rd["fallback_chain"]) or "(empty)"
+        print(f"  chosen: {rd['chosen_capability']} via {rd['chosen_provider']}")
+        print(f"  fallback chain: {chain}")
+        if rd.get("forced", {}).get("force") or rd.get("forced", {}).get("ban"):
+            print(f"  operator override: {rd['forced']}")
     if task.get("attempts"):
         print("attempts:")
         for a in task["attempts"]:
@@ -107,6 +126,22 @@ def cmd_show(args) -> None:
     for e in task["events"]:
         arrow = f"{e['from_status']} -> {e['to_status']}" if e["to_status"] else ""
         print(f"  {e['seq']:>3}. {e['created_at']} {e['type']:18s} {arrow}  {e.get('message') or ''}")
+
+
+def cmd_reroute(args) -> None:
+    body = {}
+    if args.force:
+        body["force"] = args.force
+    if args.ban:
+        body["ban"] = args.ban
+    d = _request("POST", f"/api/tasks/{args.task_id}/reroute", body)
+    print(f"rerouted {args.task_id}: chosen={d['chosen_capability']} "
+          f"via {d['chosen_provider']} ({d['chosen_reason']})")
+    chain = " -> ".join(f["capability_id"] for f in d["fallback_chain"]) or "(empty)"
+    print(f"  fallback chain: {chain}")
+    for c in d["candidates"]:
+        if not c["hard_pass"]:
+            print(f"  excluded {c['capability_id']}: {','.join(c['excluded_reasons'])}")
 
 
 def main() -> None:
@@ -128,12 +163,19 @@ def main() -> None:
     p_list.add_argument("--status", default=None)
     p_list.add_argument("--limit", type=int, default=50)
 
-    p_show = sub.add_parser("show", help="show task detail with event timeline")
+    p_show = sub.add_parser("show", help="show task detail with event timeline + route decision")
     p_show.add_argument("task_id")
+
+    p_rr = sub.add_parser("reroute", help="re-route a task at 'routing' with force/ban")
+    p_rr.add_argument("task_id")
+    p_rr.add_argument("--force", action="append", metavar="ID",
+                      help="capability/provider id to force (repeatable)")
+    p_rr.add_argument("--ban", action="append", metavar="ID",
+                      help="capability/provider id to ban (repeatable)")
 
     args = parser.parse_args()
     {"templates": cmd_templates, "create": cmd_create,
-     "list": cmd_list, "show": cmd_show}[args.cmd](args)
+     "list": cmd_list, "show": cmd_show, "reroute": cmd_reroute}[args.cmd](args)
 
 
 if __name__ == "__main__":

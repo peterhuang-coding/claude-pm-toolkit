@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from .. import db
+from ..core import router as router_mod
 from ..core import service
 
 router = APIRouter(prefix="/api", tags=["tasks"])
@@ -23,6 +24,15 @@ class CreateTaskRequest(BaseModel):
     )
     priority: int = 0
     parent_id: Optional[str] = None
+
+
+class RerouteRequest(BaseModel):
+    force: Optional[list[str]] = Field(
+        default=None, description="Capability/provider ids to force (human override)"
+    )
+    ban: Optional[list[str]] = Field(
+        default=None, description="Capability/provider ids to ban for this routing pass"
+    )
 
 
 @router.get("/health")
@@ -80,5 +90,46 @@ def get_task(task_id: str) -> dict[str, Any]:
         if detail is None:
             raise HTTPException(status_code=404, detail=f"task not found: {task_id}")
         return detail
+    finally:
+        conn.close()
+
+
+@router.get("/tasks/{task_id}/route-decision")
+def get_route_decision(task_id: str) -> dict[str, Any]:
+    """Latest route decision (candidates, exclusions, scores, fallback chain)."""
+    conn = db.connect()
+    try:
+        if service.get_task(conn, task_id) is None:
+            raise HTTPException(status_code=404, detail=f"task not found: {task_id}")
+        decision = router_mod.get_latest_decision(conn, task_id)
+        if decision is None:
+            raise HTTPException(
+                status_code=409, detail="task has not been routed yet"
+            )
+        return decision
+    finally:
+        conn.close()
+
+
+@router.post("/tasks/{task_id}/reroute")
+def reroute_task(task_id: str, req: RerouteRequest) -> dict[str, Any]:
+    """Manual re-route with operator force/ban (M2: only while at 'routing').
+
+    A fresh route_decisions row is written; the task stays parked at routing
+    with wait_reason='awaiting-adapter' until adapters land in M3.
+    """
+    conn = db.connect()
+    try:
+        task = service.get_task(conn, task_id)
+        if task is None:
+            raise HTTPException(status_code=404, detail=f"task not found: {task_id}")
+        if task["status"] != "routing":
+            raise HTTPException(
+                status_code=409,
+                detail=f"reroute is only valid at 'routing', task is {task['status']!r}",
+            )
+        decision = router_mod.route_task(conn, task_id, force=req.force, ban=req.ban)
+        router_mod.mark_awaiting_adapter(conn, task_id, decision)
+        return decision
     finally:
         conn.close()

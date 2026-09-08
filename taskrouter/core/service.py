@@ -170,9 +170,12 @@ def get_attempts(conn: sqlite3.Connection, task_id: str) -> list[dict[str, Any]]
 
 
 def get_task_detail(conn: sqlite3.Connection, task_id: str) -> Optional[dict[str, Any]]:
+    from . import router  # local import: service is imported by router-free contexts too
+
     task = get_task(conn, task_id)
     if task is None:
         return None
     task["events"] = get_events(conn, task_id)
     task["attempts"] = get_attempts(conn, task_id)
+    task["route_decision"] = router.get_latest_decision(conn, task_id)
     return task
