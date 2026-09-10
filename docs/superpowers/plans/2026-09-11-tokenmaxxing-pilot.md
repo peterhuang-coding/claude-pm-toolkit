@@ -1,5 +1,9 @@
 # Tokenmaxxing 单平台实验 Implementation Plan
 
+> 状态更新（2026-09-11）：本计划延期。用户已改为先测 WorkBuddy，再做可自然触发的任务分级 skill；不要执行下述 API 实验，除非用户后续明确恢复。
+
+> 首测结果：WorkBuddy 随包 CLI 及 task-tiering 启动脚本已通过 8 条合成反馈的真实验收。无需为此恢复下述 API 计划。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use executing-plans to execute this plan task by task in the current session. 不启动额外 agent 或后台任务。
 
 **Goal:** 用一个短命 CLI 和可视化 HTML 报告，测出 sfkey-glm 是否能可靠承担一类简单任务。
