@@ -1,6 +1,6 @@
 # 登录工作台与 Subagent API 验证（2026-09-12）
 
-本地入口：`http://127.0.0.1:3459/dashboard`。沿用已有 Task Router、SQLite 与 FastAPI；通过原 launchd 配置运行，原六个 M2 路由中的任务保持原状。
+本地入口：`http://127.0.0.1:3459/dashboard`。基于 Task Router、SQLite 与 FastAPI，通过 macOS launchd 运行。以下是 2026-09-12 的实测记录，不能代替其他机器或后续版本的验证。
 
 ## 已实现与本轮实测
 
@@ -9,7 +9,7 @@
 - `/api/subagents` 提交/列表/详情、取消、验收；`scripts/subagent.py` 是 CLI 客户端。任务只生成文本或代码草稿，主模型负责审核和应用。
 - WorkBuddy 的产品身份、关闭工具/MCP、stdin 最小输入、超时/取消清理、单客户端串行、失败不自动重试或切换付费 API。请求和输入包在同一事务保存；重启将尚未完成执行的任务停止，已返回的结果保留待验收。
 - 本轮单元/集成测试 52 项通过，覆盖旧数据库 health 默认值、非急简单任务准入、机密/复杂/紧急输入拒绝、不支持字段拒绝、跨站写入、本人登录标记不解锁路由、返回后验收、取消清理、进程组超时终止、输入写失败不泄漏排队任务。
-- 修复旧 toolkit 提交 `459d639` 删除 skill 后造成的失效链接。新源码为本仓库 `skills/task-tiering`；Codex symlink 指向新源码，官方 quick_validate 通过。此轮未声称新的会话技能清单已自动刷新。
+- 分级 skill 源码为本仓库 `skills/task-tiering`；本机 Codex symlink 指向该源码，quick_validate 通过。同日后续任务的技能清单已出现 task-tiering，文件存在与主代理发现分别得到核实。
 
 ## 真实批次
 
@@ -18,7 +18,7 @@
 - 8 条合成中文反馈；字段、数量、ID 顺序、标签/优先级与独立标准答案一致，证据均为对应输入连续原文。8/8 通过。
 - 模型由 WorkBuddy 选择为 `glm-5.3`；11.12 秒。报告输入 3367、输出 365，平台原生 credit 0.74。报告美元为 0 不代表免费；本轮未测总体节省百分比。
 - 在待验收状态重启服务后仍为 verifying，仅一个 attempt；随后调用 review 通过，任务 completed。
-- 本地证据：`/Users/peter_mini/taskrouter/experiments/subagent-api-20260912/request.json`、`response.json`、`verification.json`。持久化产物 `/Users/peter_mini/taskrouter/artifacts/t_2myzjuhe/result.json`。
+- 维护者本地证据位于运行目录的 `experiments/subagent-api-20260912/`：request.json、response.json、verification.json、final-response.json；产物位于 `artifacts/t_2myzjuhe/result.json`。这些运行文件未随代码公开。仓库另附 [4 条合成反馈示例](../examples/feedback-classification.json) 用于试跑，它与本次 8 条基准不是同一批数据。
 
 ## 后续边界
 

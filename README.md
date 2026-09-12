@@ -1,127 +1,126 @@
-# toolkits — Task Router（任务执行控制面）
+# Task Router · Token Maxxing
 
-本地优先的 Task Execution Control Plane。用户声明任务目标与 SLA（截止时间、正确性、预算、风险、数据敏感性），
-Task Router 负责：选择执行器（模型 API / CLI Agent / 本地工具 / 搜索爬虫 / Computer Use）、
-准备版本化 Context Pack、运行版本化 Harness、管理 Provider 额度与回退、验收结果、留存证据，
-并在需要时请求人工决策。
+**让主代理把合适的小任务交给已有 CLI 额度，并收回可验收的结果。**
 
-**Task First**：Agent Session 只是一次 Attempt。
+你继续在 Codex 等主代理里提出需求。主代理判断哪些工作值得外派，把目标、必要材料和验收要求打成任务包；下游 CLI 执行，主代理检查结果并完成整合。HTML 工作台用于登录入口、连通状态和任务查看，日常派发通过 skill / CLI / 本地 API 完成。
 
-- Goal: `20260908-012204-task-router-52465`（已批准 2026-09-07）
-- 对标：Inferable（MIT，durable workflows + HITL）；差异化：Provider 额度账本/熔断/回退、Context Pack 版本化、规则路由
-- 复用资产：`~/.claude/skills/llm-hub`（Provider 路由/额度/Keychain）、`skill-hub`（管理 UI）、`autopilot`（异步执行）、`pm-guard`（副作用门禁）。
+这是 `claude-pm-toolkit` 中的实验方向。目前 **WorkBuddy 单平台链路已实测通过**；跨平台额度调度与“最划算模型”选择仍在规划中。本分支包含独立的 Task Router 代码历史，原工具集保留在 [`main`](https://github.com/peterhuang-coding/claude-pm-toolkit/tree/main)。
 
-## 当前进度
+[任务目标与 API](docs/task-contract.md) · [运行与开发](docs/development.md) · [验证记录](docs/login-delegation-validation.md) · [任务分级 skill](skills/task-tiering/SKILL.md)
 
-### 2026-09-12：登录工作台与客户端 Subagent API
+## 如何分工
 
-打开 http://127.0.0.1:3459/dashboard：10 个平台的登录入口、本人登录确认、WorkBuddy 连通测试、简单批次提交、结果与验收。网页登录确认和自动调用状态分开；只实现了 WorkBuddy 随包 CLI，其他候选需逐个授权、接入与验收。原 M2 路由记录保留，收费 API adapters 仍后置。
+```mermaid
+flowchart LR
+    A[用户需求] --> B[主代理分级与拆解]
+    B --> C[确定性工作：本地脚本]
+    B --> D[复杂或紧急工作：主代理]
+    B --> E[简单非紧急批次：最小任务包]
+    E --> F[本地任务队列]
+    F --> G[WorkBuddy CLI]
+    G --> H[格式与数量检查]
+    H --> I[主代理验收语义和证据]
+    I --> J[完成或标记失败]
+```
+
+例如，开发一个功能时，主代理负责方案、关键代码与整合；反馈分类、材料提取、文案改写等独立批次可以外派。过短的任务可能直接完成更划算，排序、去重等确定性工作优先用脚本。
+
+### 给任务定 OKR，让 CLI 领取任务
+
+| 任务卡 | 含义 | 当前实现 |
+|---|---|---|
+| 目标 O | 这批工作要产出什么 | `goal` |
+| 验收 KR | 数量、字段、来源证据和语义要求 | 要求写入 `goal`；JSON / 数量由服务检查，其余由调用者验收 |
+| 输入 | 完成任务必需的材料 | `input_text`；只接受公开或合成材料 |
+| 边界 | 允许的工作类型和输出 | 简单、不急、文本或代码草稿；禁用 CLI 工具和 MCP |
+| 期限与预算 | 能等多久、值得消耗多少 | 已有执行超时和失败停止；额度硬预算、截止时间调度待实现 |
+| 交付 | 结果、用量与验收结论 | 产物、实际模型 / 原生用量、`review` 记录 |
+
+OKR 是任务描述方式；当前没有独立的 `okr` API 字段，也不声称服务能自动判断所有 KR。主代理通过 [skill 和本地 CLI](skills/task-tiering/SKILL.md) 调用，尚未接入 Codex 原生 subagent 接口。
+
+## 产品重点与可复用能力
+
+账号管理、统一接口和低价路由已有开源实现。我们希望把产品重点放在：
+
+1. **在主代理工作中自然派发。** 主代理只打包必要上下文，负责拆解、验收和应用结果。
+2. **结合任务期限使用剩余额度。** 让不急的工作等待合适的容量；这一部分还需接入真实额度与多个下游。
+3. **按合格交付的成本选择执行器。** 按任务类型积累验收通过率、等待时间和返工成本，用实际结果改进选择；尚未形成充分数据。
+
+以下是截至 2026-09-12 根据项目文档核实的参考，尚未在本机集成或评测：
+
+| 项目 | 可借鉴或复用的部分 |
+|---|---|
+| [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) | CLI 账号接入与兼容 API |
+| [Quotio](https://github.com/nguyenphutrong/quotio) | macOS 账号、额度面板与切换管理 |
+| [OmniRoute](https://github.com/diegosouzapw/OmniRoute) | 多提供方网关、额度感知路由与回退 |
+| [RouteLLM](https://github.com/lm-sys/RouteLLM) | 将简单请求交给便宜模型的路由与评估 |
+
+这些方向存在重合。任务分级与验收是本项目的产品重点，尚不能称为独有技术或已证明的竞争优势。
+
+## 现在可以做什么
+
+| 能力 | 状态 |
+|---|---|
+| 10 个网页登录候选入口，另列本机 WorkBuddy | 已实现；登录确认与可调用状态分开 |
+| WorkBuddy 随包 CLI → 任务 → 结果 → 验收 | 已实测通过 |
+| 单客户端串行、取消、执行超时、重启停止未完成执行 | 已实现 |
+| 最小输入、结果 JSON / 数量检查、调用者语义验收 | 已实现 |
+| 实际模型及平台报告用量 | 已记录；剩余额度目前未知 |
+| 其余平台执行器、跨平台最优模型与额度调度 | 待实现 |
+| 通用代码编辑、自动应用代码、收费 API 回退 | 待实现；当前只返回文本或代码草稿 |
+
+网页登录候选：Gemini、Kimi、Cursor、OpenCode、GitHub Copilot、Qoder、TRAE SOLO、Qwen、DeepSeek、豆包。**10 个入口不等于 10 个执行器**；网页登录也不等于客户端授权。批量打开受浏览器弹窗策略影响，本次内置浏览器未验证全部十页加载成功，可使用逐页入口。
+
+## 快速开始
+
+当前 WorkBuddy 适配器在 macOS 上验证，依赖已安装且正常登录的 `/Applications/WorkBuddy.app`、Node.js 和 Python 3.12。测试使用 WorkBuddy 5.5.4 与 Node.js 22；客户端更新后需重新核实随包 CLI。无需向 Task Router 提供 API key，客户端自行使用其正常登录状态。
+
+以下命令在新目录安装。若本机已有服务运行，直接打开工作台即可。
 
 ```bash
-python3 scripts/subagent.py accounts
-python3 scripts/subagent.py probe
-python3 scripts/subagent.py submit --request-file /absolute/job/request.json
-python3 scripts/subagent.py get t_example
-python3 scripts/subagent.py review t_example --passed yes --note '已检查来源、格式和语义'
+git clone --branch task/login-delegation --single-branch https://github.com/peterhuang-coding/claude-pm-toolkit.git task-router
+cd task-router
+python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install fastapi==0.115.11 pydantic==2.8.2 uvicorn==0.34.0 httpx==0.27.0
+python -m uvicorn taskrouter.main:app --host 127.0.0.1 --port 3459
 ```
 
-请求文件：`{"goal":"任务及验收要求","input_text":"必要材料","output_format":"json","expected_count":8,"data_sensitivity":"synthetic"}`。
-CLI 使用本地 `/api/subagents`，写请求带 `X-TaskRouter-Local: 1`。查询返回 `verifying` 时结果已准备好，由调用者验收后才完成；取消用 `cancel`。单客户端串行，超时杀掉子进程；失败、取消、重启均不会自动重复扣额度或切换收费 API。这里只生成文本和代码草稿，不自动修改项目。相同请求重复提交会建立不同任务；保存首次返回的 ID，网络不确定时先查询列表，不盲目重提。
+打开 [本地工作台](http://127.0.0.1:3459/dashboard)。没有 WorkBuddy 时也能查看候选入口，但不能执行下游任务。`llm-hub` 仅供旧路由内核读取健康信息，不是 WorkBuddy 链路的必需服务。
 
-skill 源码放在本仓库 `skills/task-tiering`，本机 Codex 入口链接到它。先前工具包同步删掉过旧 skill，因此恢复入口不依赖已删除的旧路径。
-
-#### 原有内核里程碑
-
-- **M1 持久化内核（已交付）**：SQLite(WAL) 12 张表 + user_version 迁移；表驱动 FSM（事务 CAS + 事件时间线）；
-  四类 SLA 模板；建 Task API/CLI（只填目标+SLA，不选 agent，AC1）；launchd 安装脚本；
-  启动重启收割（running→retrying、verifying→queued，AC8）。
-- **M2 规则路由（已交付）**：Capability/Provider 注册表（registry_seed.json，无密钥）；
-  llm-hub 只读集成（/api/health、/api/budget，httpx trust_env=False 绕本机代理）；
-  硬约束过滤（任务类型/expected_capabilities、local_only→排云端、风险与副作用权限、上下文窗口、
-  时限 vs ETA、max_cost/allow_paid/Provider 日预算、可用性=enabled 且 key_present 且未熔断/未额度耗尽
-  且 error_rate<0.5，语义对齐 llm-hub ccr-router.js）；软评分（cost/latency/quality/quota_headroom/health，
-  权重读 SLA contract.weights）；确定性工具满足硬约束时排最前；force/ban 人工覆盖（force 不覆盖安全类硬约束）；
-  route_decisions 落库（全部候选、排除原因、分项得分、chosen、有序 fallback_chain、rules_version、forced）；
-  路由后任务挂 routing + wait_reason='awaiting-adapter'（M3 才有 adapter 执行）。AC2/10。
-- M3：三 Adapter（deterministic 含 url_fetch / openai_api 读 Keychain / claude_cli）+ ContextPack 不可变 + Harness 版本（AC3/5）。
-- M4：额度账本 + 429 回退链 + waiting-capacity + Verifier（AC4/6）。
-- M5：看板三页 + 决策门禁 + 副作用幂等键 + CU stub（AC7/9）。
-
-## 目录结构
-
-```
-taskrouter/
-  config.py            # 集中路径：运行数据在 ~/taskrouter/（TASKROUTER_HOME 可覆盖）
-  db.py                # SQLite WAL，12 表 DDL，PRAGMA user_version 迁移
-  main.py              # FastAPI app；lifespan：建表→重启收割→三个 asyncio 循环
-  core/fsm.py          # 状态机：转移表 + transition()（单事务 CAS + events 行）
-  core/service.py      # 建/列/详情任务逻辑（不选 agent/模型）
-  core/recovery.py     # reap_stale() 重启收割
-  core/loops.py        # scheduler：走到 routing→触发 router→挂 awaiting-adapter；runner/watchdog 占位
-  core/llmhub.py       # llm-hub 只读客户端（httpx trust_env=False，20s 缓存，不请求任何密钥）
-  core/registry.py     # 注册表 seed 幂等 upsert + llm-hub 健康/额度同步（Keychain 只查 exit code）
-  core/router.py       # 规则路由：硬过滤→软评分→确定性优先→fallback 链；route_decisions 落库
-  api/tasks.py         # /api/tasks、/api/tasks/{id}、/api/sla-templates、reroute、route-decision
-  api/providers.py     # /api/providers、/api/capabilities、/api/llmhub/health|budget（只读代理）
-  adapters/            # 空占位（M3；M2 注册的 capability 均 adapter_ready=false）
-  harnesses/           # Harness JSON（M3，git 版本化）
-  sla_templates.json   # 四模板：即时近似/即时可靠/异步经济/异步严谨
-  router_rules.json    # 路由规则：硬约束开关、软评分字段、默认权重
-  registry_seed.json   # provider/capability 注册种子（仅 Keychain/env 引用，无密钥）
-  dashboard.html       # 看板占位（M5）
-scripts/
-  taskctl.py           # CLI（stdlib urllib）：templates/create/list/show/reroute
-  install-launchd.sh   # launchd 安装/卸载/状态（install 不自动 load）
-tests/                 # pytest：四模板建任务、FSM、重启收割、硬过滤/软评分/fallback/force-ban/零密钥
-```
-
-## 本地运行（开发）
+在另一个终端进入同一目录并激活虚拟环境：
 
 ```bash
-cd /Volumes/SanDisk2TB/toolkits
-/opt/anaconda3/bin/python3 -m uvicorn taskrouter.main:app --host 127.0.0.1 --port 3459
-# 另一个终端：
-/opt/anaconda3/bin/python3 scripts/taskctl.py templates
-/opt/anaconda3/bin/python3 scripts/taskctl.py create "5 分钟内总结这篇文章要点" --sla instant-approx
-/opt/anaconda3/bin/python3 scripts/taskctl.py create "隔夜调研竞品，要有可靠来源" --sla async-rigorous
-/opt/anaconda3/bin/python3 scripts/taskctl.py list
-/opt/anaconda3/bin/python3 scripts/taskctl.py show <task_id>   # 含 route decision：候选/排除原因/得分/fallback 链
-
-# 能力与 Provider（M2）
-curl -s --noproxy '*' http://127.0.0.1:3459/api/capabilities | python3 -m json.tool
-curl -s --noproxy '*' http://127.0.0.1:3459/api/providers | python3 -m json.tool
-curl -s --noproxy '*' http://127.0.0.1:3459/api/llmhub/health | python3 -m json.tool   # llm-hub 只读代理
-
-# 人工强制/禁止（force 只覆盖可用性/经济类硬约束，安全类 local_only/风险/副作用不可覆盖）
-/opt/anaconda3/bin/python3 scripts/taskctl.py reroute <task_id> --ban deepseek
-/opt/anaconda3/bin/python3 scripts/taskctl.py reroute <task_id> --force llm-openrouter
+python scripts/subagent.py accounts
+# 尚未测通时执行短探针；这也会产生一次真实客户端调用。
+python scripts/subagent.py probe
+# 这个示例含 4 条合成反馈，提交后会使用 WorkBuddy 额度。
+python scripts/subagent.py submit --request-file examples/feedback-classification.json
 ```
 
-运行数据（db/logs/artifacts）一律写 `~/taskrouter/`，不进代码仓。
-
-## launchd 常驻
+保存提交返回的 `id`，用实际 ID 替换下面的 `t_example`：
 
 ```bash
-./scripts/install-launchd.sh install    # 同步代码副本到 ~/taskrouter/app + 生成 plist（不自动 load）
-launchctl load ~/Library/LaunchAgents/com.user.taskrouter.plist
-./scripts/install-launchd.sh status
-./scripts/install-launchd.sh uninstall  # unload + 删 plist（保留数据）
+python scripts/subagent.py get t_example
+# 返回 verifying 后，先检查 result.output 的内容、字段、证据和分类。
+python scripts/subagent.py review t_example --passed yes --note '已核验数量、字段、分类与原文证据'
 ```
 
-plist 要点：WorkingDirectory=~/taskrouter，PYTHONPATH=~/taskrouter/app，KeepAlive+RunAtLoad，
-NO_PROXY=127.0.0.1,localhost（本机代理环境必须绕过），日志 ~/taskrouter/logs/。
+验收不通过使用 `--passed no`。取消尚未返回的任务用 `python scripts/subagent.py cancel t_example`。服务只在调用者验收通过后标记 `completed`；相同请求重复提交会创建不同任务，网络不确定时应先查询 [任务列表](http://127.0.0.1:3459/api/subagents)。更多字段、状态和 HTTP 示例见 [任务目标与 API](docs/task-contract.md)。
 
-## 测试
+主代理的分级入口是 [task-tiering](skills/task-tiering/SKILL.md)。本地 CLI 的提交、查询与验收同样可由其他支持命令调用的主代理使用。
 
-```bash
-/opt/anaconda3/bin/python3 -m pytest tests/ -q
-```
+## 验证与节省口径
 
-## 安全约束（AC10）
+2026-09-12 的一次端到端验收：**8 条合成反馈，8/8 通过，WorkBuddy 执行 11.12 秒**。平台选择 `glm-5.3`，报告输入 3367、输出 365、原生 credit 0.74；待验收及完成后重启均没有重跑。相关版本的 52 项测试通过。完整范围见 [验证记录](docs/login-delegation-validation.md)。
 
-- 数据库/任务内容/日志/API 响应中永不出现 API Key：providers 表只存 keychain_service/keychain_account/env_var
-  名称与 credential_ref（如 `keychain:llm-hub/deepseek`）；代码不读取 Keychain 明文
-  （M2 只通过 llm-hub `/api/health` 的 key_present 布尔或 `security ...` 退出码判断凭证是否存在）。
-- llm-hub 集成全程只读（GET /api/health、/api/budget），服务端用 httpx trust_env=False 绕过本机代理；
-  不修改 llm-hub 任何文件与状态。
-- 代码仓不包含任何密钥；日志不打印请求体；零密钥由 tests/test_router.py 两个用例持续断言。
+这证明单平台链路可用，尚未证明总体节省比例。主模型用量、下游额度、额外付费和用户等待时间需要分别统计；不同平台的 token / credit 不直接相加。比较时以同一批任务、相同验收要求为基准，把打包、失败、重试和主代理验收的开销计入每个合格任务的成本。
+
+## 下一步
+
+- [x] WorkBuddy 单平台派发与验收、HTML 工作台、本地 API / CLI、分级 skill。
+- [ ] 接通第二个下游，用同一组任务比较成功率、耗时和完整消耗。
+- [ ] 接入真实额度和重置时间，让非紧急任务按期限排队。
+- [ ] 建立按任务类型的质量 / 成本记录，再决定扩展平台与接入层复用方案。
+
+原任务内核、运维和开发说明见 [运行与开发](docs/development.md)。历史 [PRD](docs/prd.md) 与 [早期设计](docs/superpowers/specs/2026-09-11-tokenmaxxing-design.md) 保留演进背景；当前能力以本文及代码为准。

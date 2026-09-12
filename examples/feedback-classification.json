@@ -1,0 +1,10 @@
+{
+  "goal": "将 INPUT 中的合成反馈分类，按输入顺序返回 JSON 数组。每项只含 id、category、evidence。category 只能是 bug（已有功能异常）、feature（请求新功能）、question（询问使用方式）、praise（正向评价）。id 保持不变；evidence 必须是对应反馈 text 中的连续原文。每条反馈恰好输出一次，不得补充材料外的信息。",
+  "input_text": "[{\"id\": \"F01\", \"text\": \"点击保存就闪退，文件一直存不下来。\"}, {\"id\": \"F02\", \"text\": \"希望能增加导出 Markdown 的功能。\"}, {\"id\": \"F03\", \"text\": \"在哪里可以修改自己的头像？\"}, {\"id\": \"F04\", \"text\": \"新的搜索速度很快，用起来很方便。\"}]",
+  "output_format": "json",
+  "expected_count": 4,
+  "complexity": "simple",
+  "urgency": "flexible",
+  "data_sensitivity": "synthetic",
+  "timeout_seconds": 120
+}
