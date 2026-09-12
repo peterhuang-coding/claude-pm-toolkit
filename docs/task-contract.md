@@ -2,6 +2,10 @@
 
 本页对应 `/api/subagents` 客户端派发链路。主代理制定目标和验收标准，CLI 承接一批边界明确的工作；平台可以替换，任务的成功标准应保持一致。当前执行器只有 WorkBuddy。
 
+![从任务提交、CLI 执行、结果保存到主代理验收的流程图](assets/task-router-lifecycle.png)
+
+[查看可放大的 SVG](assets/task-router-lifecycle.svg) · [Mermaid 结构图源](assets/task-router-lifecycle.mmd)
+
 ## 用 OKR 表达一批任务
 
 - **O：交付目标。** 例如把反馈整理成分类数据，供后续产品分析使用。

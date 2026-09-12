@@ -1,0 +1,14 @@
+flowchart LR
+    M["主代理：理解目标、分级与拆解"] --> S["确定性工作：本地脚本"]
+    M --> C["复杂或紧急工作：主代理处理"]
+    M --> P["简单非紧急批次：最小任务包<br/>目标 O / 验收 KR / 输入 / 边界"]
+    P --> R["skill / CLI / 本地 API 与队列"]
+    R --> W["WorkBuddy CLI<br/>当前已测通，单客户端串行"]
+    R -. 待扩展 .-> F["第二个平台及更多下游<br/>待逐个授权、接入与实测"]
+    W --> V["自动检查格式 / 数量"]
+    V --> A["主代理核验语义 / 原文证据"]
+    A --> D["记录结论：完成 / 失败"]
+    classDef current fill:#e5f2eb,stroke:#14654d,color:#193a31
+    classDef planned fill:#f9fbfa,stroke:#879795,color:#577068,stroke-dasharray:6 6
+    class M,P,R,W,V,A,D current
+    class F planned

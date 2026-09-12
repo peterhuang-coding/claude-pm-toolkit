@@ -1,0 +1,22 @@
+sequenceDiagram
+    participant M as 主代理
+    participant R as Task Router
+    participant W as WorkBuddy CLI
+    participant D as 任务记录
+    M->>R: 提交目标 O、验收 KR 和最小输入
+    R-->>M: 返回任务 ID / queued
+    R->>W: 已测通客户端，串行执行一次任务
+    W-->>R: 返回结果与平台报告用量
+    R->>R: 检查格式与数量
+    R->>D: 检查通过后保存结果 / verifying
+    M->>R: 查询任务结果
+    R-->>M: 返回产物，等待验收
+    M->>M: 核验字段、语义、顺序与原文证据
+    M->>R: review / passed + note
+    alt 调用者验收通过
+        R->>D: completed
+    else 调用者验收不通过
+        R->>D: failed
+    end
+    Note over R,W: 超时、执行失败或格式 / 数量不符时停止，标记 failed
+    Note over R,D: 重启停止未完成执行，保留已返回结果；不自动重跑

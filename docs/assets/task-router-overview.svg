@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="960" viewBox="0 0 1440 960" role="img" aria-labelledby="title desc">
+<title id="title">Task Router 产品总览</title><desc id="desc">主代理制定目标并分级，将简单非紧急批次打成最小任务包，交给已测通的 WorkBuddy。返回结果经过自动格式和数量检查，再由主代理验收语义与证据。虚线表示第二个平台和未来扩展，尚未接通。</desc>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 1 1 L 9 5 L 1 9" fill="none" stroke="#14654d" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker><marker id="grayarrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M 1 1 L 9 5 L 1 9" fill="none" stroke="#879795" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+<rect width="1440" height="960" rx="22" fill="#f3f6f7"/>
+<text x="64" y="66" font-family="'Avenir Next', 'Hiragino Sans GB', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="18" font-weight="600" text-anchor="start" fill="#14654d">TASK ROUTER  /  TOKEN MAXXING</text>
+<rect x="1124" y="40" width="252" height="34" rx="17" fill="#e5f2eb" stroke="#e5f2eb" stroke-width="1.8"/>
+<text x="1250.0" y="63" font-family="'Avenir Next', 'Hiragino Sans GB', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="17" font-weight="600" text-anchor="middle" fill="#14654d">当前实测：WorkBuddy</text>
+<text x="64" y="135" font-family="'Avenir Next', 'Hiragino Sans GB', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="42" font-weight="600" text-anchor="start" fill="#193a31">主代理派活，CLI 执行，结果要验收。</text>
+<text x="64" y="184" font-family="'Avenir Next', 'Hiragino Sans GB', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="24" font-weight="400" text-anchor="start" fill="#577068">把简单、不急、验收明确的小任务，交给已有客户端额度。</text>
+<path d="M 64 218 L 1376 218" fill="none" stroke="#cfddd6" stroke-width="2"/>
+<text x="64" y="264" font-family="'Avenir Next', 'Hiragino Sans GB', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="19" font-weight="600" text-anchor="start" fill="#577068">主代理负责判断</text>
+<text x="484" y="264" font-family="'Avenir Next', 'Hiragino Sans GB', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="19" font-weight="600" text-anchor="start" fill="#577068">每次只发一张任务卡</text>
+<text x="972" y="264" font-family="'Avenir Next', 'Hiragino Sans GB', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="19" font-weight="600" text-anchor="start" fill="#577068">下游负责执行</text>
+<rect x="64" y="292" width="300" height="340" rx="18" fill="#193a31" stroke="#193a31" stroke-width="1.8"/>
+<text x="92" y="337" font-family="'Avenir Next', 'Hiragino Sans GB', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="33" font-weight="600" text-anchor="start" fill="#ffffff">主代理</text>
+<text x="92" y="376" font-family="'Avenir Next', 'Hiragino Sans GB', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="20" font-weight="400" text-anchor="start" fill="#c5dfd3">Codex 等工作入口</text>
+<path d="M 92 404 L 336 404" fill="none" stroke="#45675b" stroke-width="2"/>
+<circle cx="97" cy="439" r="3" fill="#8ad5ad"/>
+<text x="112" y="447" font-family="'Avenir Next', 'Hiragino Sans GB', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="20" font-weight="400" text-anchor="start" fill="#eff8f2">理解目标，拆解工作</text>
+<circle cx="97" cy="482" r="3" fill="#8ad5ad"/>
+<text x="112" y="490" font-family="'Avenir Next', 'Hiragino Sans GB', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="20" font-weight="400" text-anchor="start" fill="#eff8f2">判断是否值得外派</text>
+<circle cx="97" cy="525" r="3" fill="#8ad5ad"/>
+<text x="112" y="533" font-family="'Avenir Next', 'Hiragino Sans GB', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="20" font-weight="400" text-anchor="start" fill="#eff8f2">保留复杂与紧急任务</text>
+<circle cx="97" cy="568" r="3" fill="#8ad5ad"/>
+<text x="112" y="576" font-family="'Avenir Next', 'Hiragino Sans GB', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="20" font-weight="400" text-anchor="start" fill="#eff8f2">收回结果并完成整合</text>
+<rect x="492" y="306" width="364" height="342" rx="18" fill="#e1e9e5" stroke="#e1e9e5" stroke-width="1.8"/>
+<rect x="480" y="292" width="364" height="342" rx="18" fill="white" stroke="#cfddd6" stroke-width="1.8"/>
+<text x="510" y="338" font-family="'Avenir Next', 'Hiragino Sans GB', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="29" font-weight="600" text-anchor="start" fill="#193a31">最小任务包</text>
+<rect x="724" y="312" width="92" height="34" rx="17" fill="#e5f2eb" stroke="#e5f2eb" stroke-width="1.8"/>
+<text x="770.0" y="335" font-family="'Avenir Next', 'Hiragino Sans GB', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="17" font-weight="600" text-anchor="middle" fill="#14654d">O / KR</text>
+<text x="510" y="390" font-family="'Avenir Next', 'Hiragino Sans GB', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="18" font-weight="600" text-anchor="start" fill="#14654d">O</text>
+<text x="584" y="390" font-family="'Avenir Next', 'Hiragino Sans GB', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="20" font-weight="400" text-anchor="start" fill="#193a31">明确交付目标</text>
+<path d="M 510 410 L 814 410" fill="none" stroke="#e8eeea" stroke-width="2"/>
+<text x="510" y="449" font-family="'Avenir Next', 'Hiragino Sans GB', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="18" font-weight="600" text-anchor="start" fill="#14654d">KR</text>
+<text x="584" y="449" font-family="'Avenir Next', 'Hiragino Sans GB', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="20" font-weight="400" text-anchor="start" fill="#193a31">写清验收标准</text>
+<path d="M 510 469 L 814 469" fill="none" stroke="#e8eeea" stroke-width="2"/>
+<text x="510" y="508" font-family="'Avenir Next', 'Hiragino Sans GB', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="18" font-weight="600" text-anchor="start" fill="#14654d">输入</text>
+<text x="584" y="508" font-family="'Avenir Next', 'Hiragino Sans GB', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="20" font-weight="400" text-anchor="start" fill="#193a31">只带必要材料</text>
+<path d="M 510 528 L 814 528" fill="none" stroke="#e8eeea" stroke-width="2"/>
+<text x="510" y="567" font-family="'Avenir Next', 'Hiragino Sans GB', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="18" font-weight="600" text-anchor="start" fill="#14654d">边界</text>
+<text x="584" y="567" font-family="'Avenir Next', 'Hiragino Sans GB', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="20" font-weight="400" text-anchor="start" fill="#193a31">执行超时、文本输出</text>
+<text x="510" y="611" font-family="'Avenir Next', 'Hiragino Sans GB', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="17" font-weight="400" text-anchor="start" fill="#577068">通过 skill / CLI / 本地 API 提交</text>
+<path d="M 366 444 L 468 444" fill="none" stroke="#14654d" stroke-width="2.4" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<text x="416" y="422" font-family="'Avenir Next', 'Hiragino Sans GB', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="17" font-weight="500" text-anchor="middle" fill="#14654d">派发</text>
+<rect x="968" y="292" width="408" height="188" rx="18" fill="#e5f2eb" stroke="#acd0bd" stroke-width="1.8"/>
+<text x="996" y="340" font-family="'Avenir Next', 'Hiragino Sans GB', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="31" font-weight="600" text-anchor="start" fill="#193a31">WorkBuddy</text>
+<rect x="1252" y="310" width="96" height="34" rx="17" fill="#cde9d8" stroke="#cde9d8" stroke-width="1.8"/>
+<text x="1300.0" y="333" font-family="'Avenir Next', 'Hiragino Sans GB', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="17" font-weight="600" text-anchor="middle" fill="#14654d">已测通</text>
+<text x="996" y="387" font-family="'Avenir Next', 'Hiragino Sans GB', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="21" font-weight="400" text-anchor="start" fill="#193a31">单客户端串行 · 平台自动选模型</text>
+<text x="996" y="433" font-family="'Avenir Next', 'Hiragino Sans GB', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="21" font-weight="400" text-anchor="start" fill="#577068">返回文本或代码草稿与实际用量</text>
+<path d="M 846 384 L 954 384" fill="none" stroke="#14654d" stroke-width="2.4" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<text x="900" y="361" font-family="'Avenir Next', 'Hiragino Sans GB', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="17" font-weight="500" text-anchor="middle" fill="#14654d">执行</text>
+<rect x="968" y="514" width="408" height="118" rx="18" fill="#f9fbfa" stroke="#9aaca5" stroke-width="1.8" stroke-dasharray="8 7"/>
+<text x="996" y="556" font-family="'Avenir Next', 'Hiragino Sans GB', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="24" font-weight="600" text-anchor="start" fill="#577068">第二个平台及更多下游</text>
+<text x="996" y="600" font-family="'Avenir Next', 'Hiragino Sans GB', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="20" font-weight="400" text-anchor="start" fill="#577068">待逐个授权、接入与实测</text>
+<path d="M 856 575 L 954 575" fill="none" stroke="#879795" stroke-width="2.4" stroke-linejoin="round" marker-end="url(#grayarrow)" stroke-dasharray="8 7"/>
+<text x="904" y="555" font-family="'Avenir Next', 'Hiragino Sans GB', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="16" font-weight="500" text-anchor="middle" fill="#577068">待扩展</text>
+<text x="64" y="682" font-family="'Avenir Next', 'Hiragino Sans GB', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="21" font-weight="400" text-anchor="start" fill="#577068">分级规则：能精确写成脚本的工作，优先本地处理。</text>
+<path d="M 1172 482 L 1400 482 L 1400 718 L 644 718 L 644 744" fill="none" stroke="#14654d" stroke-width="2.4" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<rect x="64" y="748" width="1312" height="112" rx="18" fill="white" stroke="#cfddd6" stroke-width="1.8"/>
+<circle cx="100" cy="804" r="18" fill="#e5f2eb"/>
+<path d="M 91 804 L 98 811 L 109 797" fill="none" stroke="#14654d" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="135" y="800" font-family="'Avenir Next', 'Hiragino Sans GB', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="26" font-weight="600" text-anchor="start" fill="#193a31">交付之前，先验收</text>
+<text x="135" y="835" font-family="'Avenir Next', 'Hiragino Sans GB', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="18" font-weight="400" text-anchor="start" fill="#577068">返回成功只代表结果已准备好</text>
+<text x="644" y="793" font-family="'Avenir Next', 'Hiragino Sans GB', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="18" font-weight="500" text-anchor="middle" fill="#577068">自动检查</text>
+<text x="644" y="828" font-family="'Avenir Next', 'Hiragino Sans GB', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="23" font-weight="600" text-anchor="middle" fill="#193a31">格式 / 数量</text>
+<path d="M 754 807 L 802 807" fill="none" stroke="#14654d" stroke-width="2.4" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<text x="936" y="793" font-family="'Avenir Next', 'Hiragino Sans GB', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="18" font-weight="500" text-anchor="middle" fill="#577068">主代理核验</text>
+<text x="936" y="828" font-family="'Avenir Next', 'Hiragino Sans GB', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="23" font-weight="600" text-anchor="middle" fill="#193a31">语义 / 原文证据</text>
+<path d="M 1074 807 L 1118 807" fill="none" stroke="#14654d" stroke-width="2.4" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<text x="1230" y="793" font-family="'Avenir Next', 'Hiragino Sans GB', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="18" font-weight="500" text-anchor="middle" fill="#577068">记录结论</text>
+<text x="1230" y="828" font-family="'Avenir Next', 'Hiragino Sans GB', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="23" font-weight="600" text-anchor="middle" fill="#193a31">完成 / 失败</text>
+<path d="M 65 907 L 105 907" fill="none" stroke="#14654d" stroke-width="2"/>
+<text x="118" y="913" font-family="'Avenir Next', 'Hiragino Sans GB', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="17" font-weight="400" text-anchor="start" fill="#577068">当前链路</text>
+<path d="M 264 907 L 304 907" fill="none" stroke="#879795" stroke-width="2" stroke-dasharray="7 7"/>
+<text x="317" y="913" font-family="'Avenir Next', 'Hiragino Sans GB', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="17" font-weight="400" text-anchor="start" fill="#577068">后续扩展</text>
+<text x="1376" y="913" font-family="'Avenir Next', 'Hiragino Sans GB', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="17" font-weight="400" text-anchor="end" fill="#577068">跨平台额度调度与最优模型选择尚未实现</text>
+</svg>

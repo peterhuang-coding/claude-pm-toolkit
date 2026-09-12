@@ -10,18 +10,9 @@
 
 ## 如何分工
 
-```mermaid
-flowchart LR
-    A[用户需求] --> B[主代理分级与拆解]
-    B --> C[确定性工作：本地脚本]
-    B --> D[复杂或紧急工作：主代理]
-    B --> E[简单非紧急批次：最小任务包]
-    E --> F[本地任务队列]
-    F --> G[WorkBuddy CLI]
-    G --> H[格式与数量检查]
-    H --> I[主代理验收语义和证据]
-    I --> J[完成或标记失败]
-```
+![主代理、任务卡、WorkBuddy 与结果验收的产品总览](docs/assets/task-router-overview.png)
+
+[查看可放大的 SVG](docs/assets/task-router-overview.svg) · [可编辑图源](docs/assets/README.md) · [任务执行流程图](docs/assets/task-router-lifecycle.png)
 
 例如，开发一个功能时，主代理负责方案、关键代码与整合；反馈分类、材料提取、文案改写等独立批次可以外派。过短的任务可能直接完成更划算，排序、去重等确定性工作优先用脚本。
 
