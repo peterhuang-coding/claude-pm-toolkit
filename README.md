@@ -1,5 +1,17 @@
 # claude-pm-toolkit
 
+## Task Router · Token Maxxing（实验版）
+
+让主代理把简单、不急、验收明确的小任务交给已有 CLI 额度，再收回结果并验收。任务用目标 O、验收 KR、最小输入和执行边界描述；HTML 工作台管理登录入口与任务，派发通过 skill / 本地 API / CLI 完成。
+
+**WorkBuddy 单平台链路已实测通过。** 当前包含任务分级、10 个候选登录入口、队列、结果与验收；其余平台接入、额度硬预算和跨平台最优选择仍待实现，尚未证明总体节省比例。
+
+- [新版说明与快速开始](https://github.com/peterhuang-coding/claude-pm-toolkit/tree/task/login-delegation#readme)
+- [任务目标、验收与 API](https://github.com/peterhuang-coding/claude-pm-toolkit/blob/task/login-delegation/docs/task-contract.md)
+- [已验证能力与后续计划](https://github.com/peterhuang-coding/claude-pm-toolkit/tree/task/login-delegation#现在可以做什么)
+
+Task Router 代码当前保存在 `task/login-delegation` 独立历史分支。下方保留原有工具集的安装与使用说明。
+
 个人 Claude Code 研发总控的配套工具集（2026-08 建立）。包含四个组件：
 
 | 组件 | 作用 | 一句话 |
