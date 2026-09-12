@@ -6,7 +6,7 @@
 
 这是 `claude-pm-toolkit` 中的实验方向。目前 **WorkBuddy 单平台链路已实测通过**；跨平台额度调度与“最划算模型”选择仍在规划中。本分支包含独立的 Task Router 代码历史，原工具集保留在 [`main`](https://github.com/peterhuang-coding/claude-pm-toolkit/tree/main)。
 
-[任务目标与 API](docs/task-contract.md) · [运行与开发](docs/development.md) · [验证记录](docs/login-delegation-validation.md) · [任务分级 skill](skills/task-tiering/SKILL.md)
+[任务目标与 API](docs/task-contract.md) · [分流统计与兜底计划](docs/routing-and-metrics.md) · [运行与开发](docs/development.md) · [验证记录](docs/login-delegation-validation.md) · [任务分级 skill](skills/task-tiering/SKILL.md)
 
 ## 如何分工
 
@@ -57,6 +57,7 @@ OKR 是任务描述方式；当前没有独立的 `okr` API 字段，也不声�
 | 单客户端串行、取消、执行超时、重启停止未完成执行 | 已实现 |
 | 最小输入、结果 JSON / 数量检查、调用者语义验收 | 已实现 |
 | 实际模型及平台报告用量 | 已记录；剩余额度目前未知 |
+| 主代理 / 脚本 / 下游的完整分流比例 | 待实现；主代理与脚本尚未统一登记 |
 | 其余平台执行器、跨平台最优模型与额度调度 | 待实现 |
 | 通用代码编辑、自动应用代码、收费 API 回退 | 待实现；当前只返回文本或代码草稿 |
 
@@ -107,10 +108,14 @@ python scripts/subagent.py review t_example --passed yes --note '已核验数量
 
 这证明单平台链路可用，尚未证明总体节省比例。主模型用量、下游额度、额外付费和用户等待时间需要分别统计；不同平台的 token / credit 不直接相加。比较时以同一批任务、相同验收要求为基准，把打包、失败、重试和主代理验收的开销计入每个合格任务的成本。
 
+当前可核验 3 次合成批次执行（2 次手动 CLI、1 次统一派发），没有已登记的真实业务批次。它们只能说明测试范围，不能算出整体外派比例。统计分母、选择优先级和 TeleAgent 候选的边界见 [分流统计与兜底计划](docs/routing-and-metrics.md)。
+
 ## 下一步
 
 - [x] WorkBuddy 单平台派发与验收、HTML 工作台、本地 API / CLI、分级 skill。
-- [ ] 接通第二个下游，用同一组任务比较成功率、耗时和完整消耗。
+- [ ] 先补主代理 / 本地脚本 / 下游的分级登记与次数统计，测试、探针、重试分别记录。
+- [ ] 验证第二个下游：TeleAgent 是研究候选，先核实外部执行入口，再比较同组任务。
+- [ ] 加入可解释的执行器顺序与有上限的回退；当前仅由 skill 约定失败后交回主代理。
 - [ ] 接入真实额度和重置时间，让非紧急任务按期限排队。
 - [ ] 建立按任务类型的质量 / 成本记录，再决定扩展平台与接入层复用方案。
 
