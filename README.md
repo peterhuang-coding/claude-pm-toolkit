@@ -13,6 +13,25 @@ Task Router 负责：选择执行器（模型 API / CLI Agent / 本地工具 / �
 
 ## 当前进度
 
+### 2026-09-12：登录工作台与客户端 Subagent API
+
+打开 http://127.0.0.1:3459/dashboard：10 个平台的登录入口、本人登录确认、WorkBuddy 连通测试、简单批次提交、结果与验收。网页登录确认和自动调用状态分开；只实现了 WorkBuddy 随包 CLI，其他候选需逐个授权、接入与验收。原 M2 路由记录保留，收费 API adapters 仍后置。
+
+```bash
+python3 scripts/subagent.py accounts
+python3 scripts/subagent.py probe
+python3 scripts/subagent.py submit --request-file /absolute/job/request.json
+python3 scripts/subagent.py get t_example
+python3 scripts/subagent.py review t_example --passed yes --note '已检查来源、格式和语义'
+```
+
+请求文件：`{"goal":"任务及验收要求","input_text":"必要材料","output_format":"json","expected_count":8,"data_sensitivity":"synthetic"}`。
+CLI 使用本地 `/api/subagents`，写请求带 `X-TaskRouter-Local: 1`。查询返回 `verifying` 时结果已准备好，由调用者验收后才完成；取消用 `cancel`。单客户端串行，超时杀掉子进程；失败、取消、重启均不会自动重复扣额度或切换收费 API。这里只生成文本和代码草稿，不自动修改项目。相同请求重复提交会建立不同任务；保存首次返回的 ID，网络不确定时先查询列表，不盲目重提。
+
+skill 源码放在本仓库 `skills/task-tiering`，本机 Codex 入口链接到它。先前工具包同步删掉过旧 skill，因此恢复入口不依赖已删除的旧路径。
+
+#### 原有内核里程碑
+
 - **M1 持久化内核（已交付）**：SQLite(WAL) 12 张表 + user_version 迁移；表驱动 FSM（事务 CAS + 事件时间线）；
   四类 SLA 模板；建 Task API/CLI（只填目标+SLA，不选 agent，AC1）；launchd 安装脚本；
   启动重启收割（running→retrying、verifying→queued，AC8）。

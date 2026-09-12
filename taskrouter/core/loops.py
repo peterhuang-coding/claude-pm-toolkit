@@ -17,6 +17,7 @@ import sqlite3
 
 from .. import db
 from . import fsm, registry, router
+from . import delegation
 
 log = logging.getLogger("taskrouter.loops")
 
@@ -102,6 +103,7 @@ async def scheduler_loop() -> None:
                 rows = conn.execute(
                     "SELECT status, id FROM tasks "
                     "WHERE status IN ('queued', 'preparing-context', 'retrying', 'routing') "
+                    "AND COALESCE(json_extract(contract,'$.strategy'),'') != 'subscription-worker' "
                     "ORDER BY priority DESC, created_at ASC"
                 ).fetchall()
                 for row in rows:
@@ -116,9 +118,15 @@ async def scheduler_loop() -> None:
 
 
 async def runner_loop() -> None:
-    """PLACEHOLDER (M3): pick routed tasks, create attempts, drive adapters."""
+    """One subscription worker at a time; legacy API adapters remain deferred."""
     while True:
-        await asyncio.sleep(RUNNER_INTERVAL_SEC)
+        try:
+            await delegation.run_pending_once()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.exception('subscription worker loop failed')
+        await asyncio.sleep(1)
 
 
 async def watchdog_loop() -> None:

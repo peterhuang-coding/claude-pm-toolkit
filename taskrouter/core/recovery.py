@@ -28,7 +28,8 @@ def reap_stale(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     conn.execute("BEGIN")
     try:
         stale_tasks = conn.execute(
-            "SELECT id, status FROM tasks WHERE status IN ('running', 'verifying')"
+            "SELECT id, status FROM tasks WHERE status IN ('running', 'verifying') "
+            "AND COALESCE(json_extract(contract,'$.strategy'),'') != 'subscription-worker'"
         ).fetchall()
         for row in stale_tasks:
             task_id, status = row["id"], row["status"]

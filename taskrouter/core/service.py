@@ -82,7 +82,9 @@ def create_task(
 
     task_id = new_task_id()
     now = fsm.utcnow()
-    conn.execute("BEGIN")
+    own_tx = not conn.in_transaction
+    if own_tx:
+        conn.execute("BEGIN")
     try:
         conn.execute(
             """
@@ -118,9 +120,11 @@ def create_task(
             event_type="queued",
             message="task accepted into queue; no executor chosen by user",
         )
-        conn.execute("COMMIT")
+        if own_tx:
+            conn.execute("COMMIT")
     except Exception:
-        conn.execute("ROLLBACK")
+        if own_tx:
+            conn.execute("ROLLBACK")
         raise
     return get_task(conn, task_id)
 

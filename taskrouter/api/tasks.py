@@ -123,6 +123,8 @@ def reroute_task(task_id: str, req: RerouteRequest) -> dict[str, Any]:
         task = service.get_task(conn, task_id)
         if task is None:
             raise HTTPException(status_code=404, detail=f"task not found: {task_id}")
+        if task['contract'].get('strategy') == 'subscription-worker':
+            raise HTTPException(409, detail='Subscription tasks use /api/subagents; no API-provider rerouting')
         if task["status"] != "routing":
             raise HTTPException(
                 status_code=409,

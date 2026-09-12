@@ -1,0 +1,6 @@
+interface:
+  display_name: "任务分级"
+  short_description: "简单非急批次通过本地 Subagent API 派发并验收"
+  default_prompt: "按复杂度、时限与输入边界选择执行方式，简单任务用可用下游并验收。"
+policy:
+  allow_implicit_invocation: true

@@ -21,6 +21,8 @@ from fastapi.responses import FileResponse, RedirectResponse
 from . import config, db
 from .api.providers import router as providers_router
 from .api.tasks import router as tasks_router
+from .api.subagents import router as subagents_router
+from .core import delegation
 from .core import recovery, registry
 from .core.loops import runner_loop, scheduler_loop, watchdog_loop
 
@@ -39,6 +41,8 @@ async def lifespan(app: FastAPI):
     conn = db.connect()
     try:
         db.init_db(conn)
+        delegation.recover(conn)
+        # Returned outputs remain awaiting review; the legacy reaper must not replay them.
         recovered = recovery.reap_stale(conn)
         # M2: seed capability/provider registry (idempotent, no secrets).
         seeded = registry.seed_registry(conn)
@@ -71,11 +75,14 @@ async def lifespan(app: FastAPI):
     finally:
         for t in _background_tasks:
             t.cancel()
+        await asyncio.gather(*_background_tasks, return_exceptions=True)
+        _background_tasks.clear()
 
 
 app = FastAPI(title="taskrouter", version="0.2.0", lifespan=lifespan)
 app.include_router(tasks_router)
 app.include_router(providers_router)
+app.include_router(subagents_router)
 
 
 @app.get("/")
