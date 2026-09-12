@@ -10,7 +10,10 @@
 
 - [新版说明与快速开始](https://github.com/peterhuang-coding/claude-pm-toolkit/tree/task/login-delegation#readme)
 - [任务目标、验收与 API](https://github.com/peterhuang-coding/claude-pm-toolkit/blob/task/login-delegation/docs/task-contract.md)
+- [分流统计、CLI 优先级与兜底计划](https://github.com/peterhuang-coding/claude-pm-toolkit/blob/task/login-delegation/docs/routing-and-metrics.md)
 - [已验证能力与后续计划](https://github.com/peterhuang-coding/claude-pm-toolkit/tree/task/login-delegation#现在可以做什么)
+
+下一阶段先补主代理 / 脚本 / 下游的完整分流统计，再验证第二个平台。TeleAgent 是研究候选，尚未接通；多个 CLI 的自动排序和跨平台回退仍待实现。
 
 Task Router 代码当前保存在 `task/login-delegation` 独立历史分支。下方保留原有工具集的安装与使用说明。
 
