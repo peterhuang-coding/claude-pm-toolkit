@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Local Task Router client. submit -> get -> review; no credential handling."""
 import argparse
+import hashlib
 import json
 from pathlib import Path
+import secrets
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -16,6 +18,8 @@ def main():
     commands.add_parser('probe')
     submit = commands.add_parser('submit')
     submit.add_argument('--request-file', type=Path, required=True)
+    submit.add_argument('--idempotency-key', help='8–200 characters; reuse after an uncertain response')
+    submit.add_argument('--new-run', action='store_true', help='create a new run even when the request file is unchanged')
     for name in ('get', 'cancel', 'review'):
         child = commands.add_parser(name); child.add_argument('task_id')
         if name == 'review':
@@ -34,9 +38,17 @@ def main():
         path = '/subagents/' + urllib.parse.quote(args.task_id, safe='')
         if args.command == 'cancel': path += '/cancel'; body = {}
         if args.command == 'review': path += '/review'; body = {'passed':args.passed == 'yes', 'note':args.note}
+    headers = {'Content-Type':'application/json', 'X-TaskRouter-Local':'1'}
+    if args.command == 'submit':
+        if args.idempotency_key and args.new_run:
+            p.error('--idempotency-key and --new-run cannot be used together')
+        headers['Idempotency-Key'] = args.idempotency_key or (
+            'run:' + secrets.token_hex(12) if args.new_run else
+            'file-sha256:' + hashlib.sha256(args.request_file.read_bytes()).hexdigest()
+        )
     request = urllib.request.Request(args.url.rstrip('/') + '/api' + path,
         data=None if body is None else json.dumps(body).encode(),
-        headers={'Content-Type':'application/json', 'X-TaskRouter-Local':'1'})
+        headers=headers)
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     try:
         with opener.open(request, timeout=75) as response: data = json.load(response)

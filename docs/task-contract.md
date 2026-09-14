@@ -13,7 +13,7 @@
 - **约束：** 提供哪些材料、能等待多久、允许哪些操作。
 - **交付与验收：** 保存结果和实际用量，调用者检查后提交通过或失败。
 
-目标和语义 KR 目前一起写在 `goal` 中。格式、数组数量由服务检查，字段、顺序、分类和证据由调用者核验。系统记录调用者的验收结论，不独立证明该结论正确。
+目标和语义 KR 目前一起写在 `goal` 中。格式、数组数量和顶层必填字段可由服务检查；字段值、顺序、分类语义和证据是否准确仍由调用者核验。系统记录调用者的验收结论，不独立证明该结论正确。
 
 ## 当前请求格式
 
@@ -25,10 +25,13 @@
 | `input_text` | 必填字符串，1–80000 字符 | 最小材料包；不能全为空白。嵌入 JSON 时也须编码成字符串 |
 | `output_format` | `text` / `json`，默认 `text` | JSON 输出须可解析 |
 | `expected_count` | 可选整数，0–5000 | 仅支持 JSON 输出；要求结果为对应长度的数组 |
+| `required_fields` | 可选字符串数组，1–50 项 | 仅支持 JSON；要求对象或数组中的每个对象都包含这些顶层字段 |
 | `complexity` | `simple` / `moderate` / `complex`，默认 `simple` | 当前仅允许 `simple` 派发 |
 | `urgency` | `flexible` / `urgent`，默认 `flexible` | 当前仅允许 `flexible` 派发 |
 | `data_sensitivity` | `public` / `synthetic` / `confidential`，默认 `public` | 当前拒绝 `confidential` |
 | `timeout_seconds` | 整数，10–300，默认 120 | 限制实际 CLI 执行时间，不包括排队和验收 |
+
+调用方可以通过 HTTP `Idempotency-Key` 请求头提供 8–200 位的稳定键（字母、数字、点、下划线、冒号或连字符）。相同键和相同请求会返回原任务并带 `idempotency_replayed=true`；同一键用于不同请求返回 409。CLI 默认按请求文件内容生成 `file-sha256:...`，也可用 `--idempotency-key` 显式指定；确实要再次执行相同内容时使用 `--new-run`。
 
 难度、紧急程度和数据类别由调用者提供；服务检查标签，不会自动分析材料并重新分级。主代理应先判断任务是否适合外派，尤其不要把机密或个人材料标成公开输入。
 
@@ -38,7 +41,7 @@
 
 1. 判断一次：确定性处理用本地脚本；很短、复杂或紧急的任务由主代理完成；简单、不急、公开或合成批次才考虑下游。不为分级额外启动一个模型。
 2. 用 `accounts` 检查可用性。`login_reported` 只表示本人确认登录；只有 `routable=true` 表示已安装且曾通过连通探针，实际派发仍可能因后续额度 / 登录变化失败。
-3. 将最小任务包保存为 JSON，用 `submit` 提交并保存返回的任务 ID。不传完整主对话、无关文件或凭证。
+3. 将最小任务包保存为 JSON，用 `submit` 提交并保存返回的任务 ID。为同一个调用方工作单使用稳定幂等键；网络返回不明时使用同一键重试。不传完整主对话、无关文件或凭证。
 4. 用 `get` 轮询；`verifying` 表示已有结果，读取 `result.output` 并核验。
 5. 用 `review --passed yes/no` 留下验收结论与理由。通过后才进入 `completed`。
 
@@ -94,6 +97,7 @@ queued → preparing-context → routing → running → verifying → completed
 curl --noproxy '*' -sS http://127.0.0.1:3459/api/subagents \
   -H 'Content-Type: application/json' \
   -H 'X-TaskRouter-Local: 1' \
+  -H 'Idempotency-Key: feedback-batch-001' \
   --data-binary @examples/feedback-classification.json
 ```
 
@@ -103,6 +107,6 @@ CLI 的 `--url` 放在子命令之前，例如 `python scripts/subagent.py --url
 
 ## 重复提交与数据边界
 
-同样的 HTTP 请求提交两次会产生两个任务，当前没有请求幂等键。网络返回不确定时，先查任务列表，避免盲目重发。单个 WorkBuddy 客户端串行执行；排队与运行中的任务总数上限为 20。
+未提供幂等键时，同样的 HTTP 请求提交两次仍会产生两个任务。提供键时，幂等记录与任务、Context Pack 在同一事务内创建；相同键重试会返回原任务。调用方应按业务工作单生成键，不要为每次网络重试生成新键。单个 WorkBuddy 客户端串行执行；排队与运行中的任务总数上限为 20。
 
 客户端使用临时工作目录、stdin 输入，并关闭工具与 MCP。原文任务包、返回结果和验收记录保存在本机运行目录；公开或合成输入仍会发送给 WorkBuddy 服务完成推理。Task Router 不接管浏览器 cookie 或客户端登录凭据，也不通过该链路读取 API key。

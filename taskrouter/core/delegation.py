@@ -13,6 +13,7 @@ from ..adapters import workbuddy
 from . import fsm, service
 
 STRATEGY = 'subscription-worker'
+IDEMPOTENCY_SCOPE = 'subagents:v1'
 CATALOG = [
     ('gemini', 'Gemini', 'https://gemini.google.com/app', 'CLI 需单独 Google 授权；网页登录后待接入'),
     ('kimi', 'Kimi', 'https://www.kimi.com/', '官方 CLI 可用会员共享额度；待确认权益和接入'),
@@ -48,6 +49,7 @@ class SubagentRequest(BaseModel):
     data_sensitivity: Literal['public', 'synthetic', 'confidential'] = 'public'
     timeout_seconds: int = Field(default=120, ge=10, le=300)
     expected_count: int | None = Field(default=None, ge=0, le=5000)
+    required_fields: list[str] | None = Field(default=None, min_length=1, max_length=50)
 
 
 def accounts(conn):
@@ -87,19 +89,51 @@ def managed_ids(conn, statuses):
                         f"AND status IN ({placeholders}) ORDER BY created_at,id", (STRATEGY, *statuses)).fetchall()
 
 
-def submit(conn, req):
+def request_hash(req):
+    payload = json.dumps(
+        req.model_dump(mode='json'),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(',', ':'),
+    )
+    return hashlib.sha256(payload.encode()).hexdigest()
+
+
+def submit(conn, req, idempotency_key=None):
     if req.complexity != 'simple' or req.urgency != 'flexible' or req.data_sensitivity == 'confidential':
         raise ValueError('主模型处理：当前下游只接受简单、不急、公开或合成材料的任务')
     if not req.goal.strip() or not req.input_text.strip():
         raise ValueError('目标和材料不能为空')
     if req.expected_count is not None and req.output_format != 'json':
         raise ValueError('expected_count requires JSON output')
-    if not any(p['routable'] for p in accounts(conn)):
-        raise ValueError('没有已测通的客户端；请先测试 WorkBuddy 登录与额度')
-    if len(managed_ids(conn, ['queued', 'running'])) >= 20:
-        raise ValueError('队列已满，请等待现有任务')
+    if req.required_fields is not None:
+        if req.output_format != 'json':
+            raise ValueError('required_fields requires JSON output')
+        normalized = [field.strip() for field in req.required_fields]
+        if any(not field for field in normalized) or len(set(normalized)) != len(normalized):
+            raise ValueError('required_fields must contain unique non-empty names')
+        req.required_fields = normalized
+    digest = request_hash(req)
     conn.execute('BEGIN IMMEDIATE')
     try:
+        if idempotency_key:
+            existing = conn.execute(
+                'SELECT request_hash,task_id FROM request_idempotency WHERE scope=? AND key=?',
+                (IDEMPOTENCY_SCOPE, idempotency_key),
+            ).fetchone()
+            if existing:
+                if existing['request_hash'] != digest:
+                    raise ValueError('幂等键已用于不同的请求；请换一个键')
+                task = service.get_task(conn, existing['task_id'])
+                if task is None:
+                    raise RuntimeError('幂等记录指向不存在的任务')
+                conn.execute('COMMIT')
+                task['idempotency_replayed'] = True
+                return task
+        if not any(p['routable'] for p in accounts(conn)):
+            raise ValueError('没有已测通的客户端；请先测试 WorkBuddy 登录与额度')
+        if len(managed_ids(conn, ['queued', 'running'])) >= 20:
+            raise ValueError('队列已满，请等待现有任务')
         task = service.create_task(conn, req.goal, 'async-economy', req.output_format,
                                    advanced={'strategy':STRATEGY, 'allow_paid':False,
                                              'data_sensitivity':req.data_sensitivity,
@@ -107,10 +141,16 @@ def submit(conn, req):
                                              'expected_capabilities':['batch', 'client_login']})
         conn.execute('INSERT INTO context_packs (id,task_id,version,content,created_at) VALUES (?,?,1,?,?)',
                      (str(uuid.uuid4()), task['id'], req.model_dump_json(), fsm.utcnow()))
+        if idempotency_key:
+            conn.execute(
+                'INSERT INTO request_idempotency (scope,key,request_hash,task_id,created_at) VALUES (?,?,?,?,?)',
+                (IDEMPOTENCY_SCOPE, idempotency_key, digest, task['id'], fsm.utcnow()),
+            )
         conn.execute('COMMIT')
     except Exception:
         conn.execute('ROLLBACK')
         raise
+    task['idempotency_replayed'] = False
     return task
 
 
@@ -191,8 +231,19 @@ async def run_pending_once():
             output = json.loads(re.sub(r'^```(?:json)?\s*|\s*```$', '', output.strip()))
         if req.expected_count is not None and (not isinstance(output, list) or len(output) != req.expected_count):
             raise ValueError('Returned item count does not match the task contract')
+        if req.required_fields is not None:
+            items = output if isinstance(output, list) else [output]
+            if not items or any(not isinstance(item, dict) for item in items):
+                raise ValueError('required_fields requires a JSON object or array of objects')
+            missing = sorted({field for item in items for field in req.required_fields if field not in item})
+            if missing:
+                raise ValueError('Returned items are missing required fields: ' + ', '.join(missing))
         result = {'output': output, 'provider':'workbuddy', 'metadata':metadata,
-                  'checks':{'format':True, 'expected_count':req.expected_count}, 'semantic_review':'required'}
+                  'selection':{'strategy':STRATEGY, 'executor':'workbuddy',
+                               'reason':'only_verified_subscription_worker',
+                               'multi_executor_routing':False},
+                  'checks':{'format':True, 'expected_count':req.expected_count,
+                            'required_fields':req.required_fields}, 'semantic_review':'required'}
         path = config.artifact_dir() / tid / 'result.json'
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open('x') as f: json.dump(result, f, ensure_ascii=False, indent=2)

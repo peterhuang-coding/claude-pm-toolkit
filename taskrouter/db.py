@@ -13,7 +13,7 @@ from typing import Optional
 
 from . import config
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 # --- DDL ---------------------------------------------------------------------
 # All core objects from the PRD: Task, Context Pack, Harness, Attempt, Event,
@@ -46,6 +46,16 @@ _TABLES = [
         local_only  INTEGER NOT NULL DEFAULT 0,
         created_at  TEXT NOT NULL,
         UNIQUE(task_id, version)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS request_idempotency (
+        scope        TEXT NOT NULL,
+        key          TEXT NOT NULL,
+        request_hash TEXT NOT NULL,
+        task_id      TEXT NOT NULL REFERENCES tasks(id),
+        created_at   TEXT NOT NULL,
+        PRIMARY KEY(scope, key)
     )
     """,
     """
@@ -237,6 +247,20 @@ _MIGRATIONS = {
         "ALTER TABLE route_decisions ADD COLUMN forced TEXT NOT NULL DEFAULT '{}'",
         "ALTER TABLE route_decisions ADD COLUMN chosen_reason TEXT",
         "CREATE INDEX IF NOT EXISTS idx_route_decisions_task ON route_decisions(task_id, created_at)",
+    ),
+    # v2 -> v3: caller-provided idempotency keys prevent a retried submission
+    # from creating a second task and consuming subscription quota twice.
+    2: (
+        """
+        CREATE TABLE IF NOT EXISTS request_idempotency (
+            scope        TEXT NOT NULL,
+            key          TEXT NOT NULL,
+            request_hash TEXT NOT NULL,
+            task_id      TEXT NOT NULL REFERENCES tasks(id),
+            created_at   TEXT NOT NULL,
+            PRIMARY KEY(scope, key)
+        )
+        """,
     ),
 }
 

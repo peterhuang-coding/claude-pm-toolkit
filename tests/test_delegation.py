@@ -56,6 +56,85 @@ def test_execution_review_failure_and_no_repeat(conn, monkeypatch):
     assert len(calls) == 2
 
 
+def test_required_fields_are_checked_before_review(conn, monkeypatch):
+    monkeypatch.setattr(delegation.workbuddy, 'available', lambda: True)
+    delegation.set_probe(conn, True)
+
+    async def execute(prompt, timeout):
+        return '[{"id":"A"}]', {'elapsed_seconds':0.1, 'models':[], 'usage':{}}
+
+    monkeypatch.setattr(delegation.workbuddy, 'run', execute)
+    task = delegation.submit(conn, delegation.SubagentRequest(
+        goal='classify', input_text='A', output_format='json', expected_count=1,
+        required_fields=['id', 'category'],
+    ))
+    asyncio.run(delegation.run_pending_once())
+
+    detail = delegation.detail(conn, task['id'])
+    assert detail['status'] == 'failed'
+    assert 'category' in detail['attempts'][0]['error']
+
+
+def test_required_fields_contract_validation(conn, monkeypatch):
+    monkeypatch.setattr(delegation.workbuddy, 'available', lambda: True)
+    delegation.set_probe(conn, True)
+    with pytest.raises(ValueError, match='requires JSON'):
+        delegation.submit(conn, delegation.SubagentRequest(
+            goal='draft', input_text='A', required_fields=['title'],
+        ))
+    with pytest.raises(ValueError, match='unique non-empty'):
+        delegation.submit(conn, delegation.SubagentRequest(
+            goal='draft', input_text='A', output_format='json', required_fields=['id', 'id'],
+        ))
+
+
+def test_submission_idempotency_reuses_task_and_rejects_payload_change(conn, monkeypatch):
+    monkeypatch.setattr(delegation.workbuddy, 'available', lambda: True)
+    delegation.set_probe(conn, True)
+    client = TestClient(app, base_url='http://127.0.0.1')
+    headers = {**HEADERS, 'Idempotency-Key':'feedback-batch-001'}
+    request = {'goal':'classify', 'input_text':'synthetic input'}
+
+    first = client.post('/api/subagents', json=request, headers=headers)
+    second = client.post('/api/subagents', json=request, headers=headers)
+
+    assert first.status_code == 202
+    assert second.status_code == 202
+    assert first.json()['id'] == second.json()['id']
+    assert first.json()['idempotency_replayed'] is False
+    assert second.json()['idempotency_replayed'] is True
+    assert conn.execute('SELECT COUNT(*) FROM tasks').fetchone()[0] == 1
+
+    changed = client.post('/api/subagents', json={**request, 'input_text':'changed'}, headers=headers)
+    assert changed.status_code == 409
+    assert '不同的请求' in changed.json()['detail']
+
+
+def test_submission_rejects_invalid_idempotency_key(conn, monkeypatch):
+    monkeypatch.setattr(delegation.workbuddy, 'available', lambda: True)
+    delegation.set_probe(conn, True)
+    client = TestClient(app, base_url='http://127.0.0.1')
+    response = client.post(
+        '/api/subagents',
+        json={'goal':'classify', 'input_text':'synthetic input'},
+        headers={**HEADERS, 'Idempotency-Key':'bad key'},
+    )
+    assert response.status_code == 422
+
+
+def test_idempotent_replay_does_not_require_worker_to_still_be_routable(conn, monkeypatch):
+    monkeypatch.setattr(delegation.workbuddy, 'available', lambda: True)
+    delegation.set_probe(conn, True)
+    req = delegation.SubagentRequest(goal='classify', input_text='synthetic input')
+    first = delegation.submit(conn, req, idempotency_key='stable-job-001')
+
+    delegation.set_probe(conn, False)
+    replay = delegation.submit(conn, req, idempotency_key='stable-job-001')
+
+    assert replay['id'] == first['id']
+    assert replay['idempotency_replayed'] is True
+
+
 def test_cancel_and_restart_never_replay(conn, monkeypatch):
     monkeypatch.setattr(delegation.workbuddy, 'available', lambda: True)
     delegation.set_probe(conn, True)

@@ -16,8 +16,8 @@ description: Use when choosing how to execute simple non-urgent batches, classif
 入口为本仓库 `scripts/subagent.py`，默认本地 http://127.0.0.1:3459：
 
 1. `python3 scripts/subagent.py accounts` 查看各平台。网页登录的本人确认不代表客户端已授权；只有实测成功才路由。
-2. 把最小任务包写成 JSON：`goal`、`input_text`、`output_format`（text/json），可加 `expected_count` 与 `timeout_seconds`（10–300）。仅公开材料或设置 `data_sensitivity: synthetic` 的合成数据。
-3. `python3 scripts/subagent.py submit --request-file /absolute/job/request.json`，保留返回 ID。当前唯一实现的下游是 WorkBuddy；平台自动选择模型并记录实际模型，不擅自换收费 API。
+2. 把最小任务包写成 JSON：`goal`、`input_text`、`output_format`（text/json），可加 `expected_count`、`required_fields` 与 `timeout_seconds`（10–300）。结构化任务应明确顶层必填字段；仅公开材料或设置 `data_sensitivity: synthetic` 的合成数据。
+3. `python3 scripts/subagent.py submit --request-file /absolute/job/request.json --idempotency-key CALLER_JOB_ID`，保留返回 ID。同一业务工作单和网络重试复用同一键；CLI 不传时按请求文件内容生成键，确需重新执行相同内容时使用 `--new-run`。当前唯一实现的下游是 WorkBuddy；平台自动选择模型并记录实际模型，不擅自换收费 API。
 4. `python3 scripts/subagent.py get TASK_ID`。任务进入 verifying 后取回 result.output；检查格式、数量、ID/顺序、来源证据与语义。
 5. 验收后 `python3 scripts/subagent.py review TASK_ID --passed yes --note '核验结果'`。失败传 no；最多一次定向修正需新建任务，仍失败就交回主代理完成授权范围内的工作。修正关联原任务 ID，不能用新建任务重置次数。取消尚未返回的任务用 cancel。
 
@@ -27,8 +27,8 @@ description: Use when choosing how to execute simple non-urgent batches, classif
 
 - 当前只有 WorkBuddy 执行器，模型由平台自动选择。TeleAgent 只是候选，未验证外部 CLI，也未加入平台目录；不能因有赠送积分就尝试派发。未来先满足可用性、数据和质量要求，再比较已知额度、到期时间与完整消耗；不预设平台优先排名。
 - 明确不可用或额度不足时停止下游，由主代理或适用的本地脚本承接；不能默默切换收费 API。余额未知不当作零、无限或免费。
-- 提交超时或返回状态不明时，先查已有任务。有 ID 用 get；无 ID 查询本地 `GET /api/subagents`（可用 `curl --noproxy '*' -sS http://127.0.0.1:3459/api/subagents`），核对目标、时间和状态。列表只含最近 50 条，没找到不证明从未执行；无法确认则保留待核查状态，不重发或换平台重复执行。
-- 已返回结果先验收复用。当前服务没有幂等键、自动回退或跨任务统一限次；上面的修正上限由主代理遵守。
+- 提交超时或返回状态不明时，用原 `Idempotency-Key` 重试会返回原任务；有 ID 用 get。若旧调用未提供键，则查询本地 `GET /api/subagents`，核对目标、时间和状态。列表只含最近 50 条，没找到不证明从未执行；无法确认则保留待核查状态，不重发或换平台重复执行。
+- 已返回结果先验收复用。当前服务已有提交幂等键，但没有自动回退或跨任务统一限次；上面的修正上限仍由主代理遵守。
 
 ## 用量回答
 

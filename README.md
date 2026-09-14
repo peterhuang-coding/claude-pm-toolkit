@@ -1,12 +1,12 @@
-# Task Router · Token Maxxing
+# Task Router
 
-**让主代理把合适的小任务交给已有 CLI 额度，并收回可验收的结果。**
+**接入你已有的 AI，让任务自动找到合适的执行方式。**
 
-你继续在 Codex 等主代理里提出需求。主代理判断哪些工作值得外派，把目标、必要材料和验收要求打成任务包；下游 CLI 执行，主代理检查结果并完成整合。HTML 工作台用于登录入口、连通状态和任务查看，日常派发通过 skill / CLI / 本地 API 完成。
+目标体验是：首次接入已有 CLI、API 和本地工具，之后只提交任务；系统在内部完成分级、最小上下文准备、执行器选择和验收，只有授权、预算或结果异常时才需要接管。HTML 工作台负责接入、观察和异常处理，自动执行才是产品主体。
 
-这是 `claude-pm-toolkit` 中的实验方向。目前 **WorkBuddy 单平台链路已实测通过**；跨平台额度调度与“最划算模型”选择仍在规划中。本分支包含独立的 Task Router 代码历史，原工具集保留在 [`main`](https://github.com/peterhuang-coding/claude-pm-toolkit/tree/main)。
+这是 `claude-pm-toolkit` 中的实验方向。目前 **WorkBuddy 单平台文本链路已实测通过**；内部自动分级、多执行器真实路由、自动验收与完整成本优化仍在演进。各平台仍须分别完成正常授权，“一次接入”不表示跨平台一次登录或永久有效。本分支包含独立的 Task Router 代码历史，原工具集保留在 [`main`](https://github.com/peterhuang-coding/claude-pm-toolkit/tree/main)。
 
-[任务目标与 API](docs/task-contract.md) · [分流统计与兜底计划](docs/routing-and-metrics.md) · [运行与开发](docs/development.md) · [验证记录](docs/login-delegation-validation.md) · [任务分级 skill](skills/task-tiering/SKILL.md)
+[自动路由首版升级路线](docs/automatic-routing-roadmap.md) · [任务目标与 API](docs/task-contract.md) · [分流统计与兜底计划](docs/routing-and-metrics.md) · [运行与开发](docs/development.md) · [验证记录](docs/login-delegation-validation.md) · [任务分级 skill](skills/task-tiering/SKILL.md)
 
 ## 如何分工
 
@@ -56,6 +56,7 @@ OKR 是任务描述方式；当前没有独立的 `okr` API 字段，也不声�
 | WorkBuddy 随包 CLI → 任务 → 结果 → 验收 | 已实测通过 |
 | 单客户端串行、取消、执行超时、重启停止未完成执行 | 已实现 |
 | 最小输入、结果 JSON / 数量检查、调用者语义验收 | 已实现 |
+| JSON 对象顶层必填字段检查 | 已实现；字段值和业务语义仍由调用者验收 |
 | 实际模型及平台报告用量 | 已记录；剩余额度目前未知 |
 | 主代理 / 脚本 / 下游的完整分流比例 | 待实现；主代理与脚本尚未统一登记 |
 | 其余平台执行器、跨平台最优模型与额度调度 | 待实现 |
@@ -98,13 +99,13 @@ python scripts/subagent.py get t_example
 python scripts/subagent.py review t_example --passed yes --note '已核验数量、字段、分类与原文证据'
 ```
 
-验收不通过使用 `--passed no`。取消尚未返回的任务用 `python scripts/subagent.py cancel t_example`。服务只在调用者验收通过后标记 `completed`；相同请求重复提交会创建不同任务，网络不确定时应先查询 [任务列表](http://127.0.0.1:3459/api/subagents)。更多字段、状态和 HTTP 示例见 [任务目标与 API](docs/task-contract.md)。
+验收不通过使用 `--passed no`。取消尚未返回的任务用 `python scripts/subagent.py cancel t_example`。服务只在调用者验收通过后标记 `completed`。CLI 默认按请求文件内容生成幂等键；同一个业务工作单也可以通过 `--idempotency-key` 显式指定稳定键，网络返回不确定时复用该键会返回原任务。确实需要再次运行相同内容时加 `--new-run`。更多字段、状态和 HTTP 示例见 [任务目标与 API](docs/task-contract.md)。
 
 主代理的分级入口是 [task-tiering](skills/task-tiering/SKILL.md)。本地 CLI 的提交、查询与验收同样可由其他支持命令调用的主代理使用。
 
 ## 验证与节省口径
 
-2026-09-12 的一次端到端验收：**8 条合成反馈，8/8 通过，WorkBuddy 执行 11.12 秒**。平台选择 `glm-5.3`，报告输入 3367、输出 365、原生 credit 0.74；待验收及完成后重启均没有重跑。相关版本的 52 项测试通过。完整范围见 [验证记录](docs/login-delegation-validation.md)。
+2026-09-12 的一次端到端验收：**8 条合成反馈，8/8 通过，WorkBuddy 执行 11.12 秒**。平台选择 `glm-5.3`，报告输入 3367、输出 365、原生 credit 0.74；待验收及完成后重启均没有重跑。该历史版本的 52 项测试通过。2026-09-14 的幂等与必填字段改动通过 57 项本地测试及 v2→v3 迁移检查；本轮未调用真实 WorkBuddy。完整端到端范围见 [验证记录](docs/login-delegation-validation.md)。
 
 这证明单平台链路可用，尚未证明总体节省比例。主模型用量、下游额度、额外付费和用户等待时间需要分别统计；不同平台的 token / credit 不直接相加。比较时以同一批任务、相同验收要求为基准，把打包、失败、重试和主代理验收的开销计入每个合格任务的成本。
 
@@ -113,9 +114,11 @@ python scripts/subagent.py review t_example --passed yes --note '已核验数量
 ## 下一步
 
 - [x] WorkBuddy 单平台派发与验收、HTML 工作台、本地 API / CLI、分级 skill。
-- [ ] 先补主代理 / 本地脚本 / 下游的分级登记与次数统计，测试、探针、重试分别记录。
-- [ ] 验证第二个下游：TeleAgent 是研究候选，先核实外部执行入口，再比较同组任务。
-- [ ] 加入可解释的执行器顺序与有上限的回退；当前仅由 skill 约定失败后交回主代理。
+- [x] 提交幂等键，避免网络不确定时重复创建本地任务；结果明确记录当前固定执行器的选择边界。
+- [ ] 先定义统一 Adapter，并验证一个官方兼容 API 作为第二执行器；TeleAgent 仍只是待验证候选。
+- [ ] 打通通用 Rule Router 与实际执行器，加入可解释的执行顺序和整批共享尝试上限。
+- [ ] 建立反馈分类、字段提取 Harness 与自动结构/证据验收。
+- [ ] 补主代理 / 本地脚本 / 下游的完整分级登记，测试、探针和重试分别记录。
 - [ ] 接入真实额度和重置时间，让非紧急任务按期限排队。
 - [ ] 建立按任务类型的质量 / 成本记录，再决定扩展平台与接入层复用方案。
 

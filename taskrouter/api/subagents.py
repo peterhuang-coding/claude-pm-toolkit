@@ -1,4 +1,5 @@
 import asyncio
+import re
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -60,10 +61,15 @@ async def probe(pid: str):
 
 
 @router.post('/subagents', status_code=202, dependencies=[Depends(local_write)])
-def submit(req: d.SubagentRequest):
+def submit(req: d.SubagentRequest, request: Request):
+    idempotency_key = request.headers.get('idempotency-key')
+    if idempotency_key is not None:
+        idempotency_key = idempotency_key.strip()
+        if not re.fullmatch(r'[A-Za-z0-9._:-]{8,200}', idempotency_key):
+            raise HTTPException(422, 'Idempotency-Key 须为 8–200 位字母、数字、点、下划线、冒号或连字符')
     conn = db.connect()
     try:
-        try: return d.submit(conn, req)
+        try: return d.submit(conn, req, idempotency_key=idempotency_key)
         except ValueError as e: raise HTTPException(409, str(e))
     finally: conn.close()
 

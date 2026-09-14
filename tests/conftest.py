@@ -24,7 +24,7 @@ def conn():
     for table in (
         "quota_ledger", "route_decisions", "capabilities", "providers",
         "decisions", "evaluations", "artifacts", "events", "attempts",
-        "harness_registry", "context_packs", "tasks",
+        "harness_registry", "request_idempotency", "context_packs", "tasks",
     ):
         c.execute(f"DELETE FROM {table}")
     c.execute("PRAGMA user_version")

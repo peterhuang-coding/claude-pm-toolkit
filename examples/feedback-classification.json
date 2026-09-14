@@ -3,6 +3,7 @@
   "input_text": "[{\"id\": \"F01\", \"text\": \"点击保存就闪退，文件一直存不下来。\"}, {\"id\": \"F02\", \"text\": \"希望能增加导出 Markdown 的功能。\"}, {\"id\": \"F03\", \"text\": \"在哪里可以修改自己的头像？\"}, {\"id\": \"F04\", \"text\": \"新的搜索速度很快，用起来很方便。\"}]",
   "output_format": "json",
   "expected_count": 4,
+  "required_fields": ["id", "category", "evidence"],
   "complexity": "simple",
   "urgency": "flexible",
   "data_sensitivity": "synthetic",
