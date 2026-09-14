@@ -8,6 +8,8 @@
 
 [自动路由首版升级路线](docs/automatic-routing-roadmap.md) · [任务目标与 API](docs/task-contract.md) · [分流统计与兜底计划](docs/routing-and-metrics.md) · [运行与开发](docs/development.md) · [验证记录](docs/login-delegation-validation.md) · [任务分级 skill](skills/task-tiering/SKILL.md)
 
+产品方向先通过 [5 个调研待办](docs/product-research-backlog.md) 比较，在 [Notion](https://app.notion.com/p/3db3285284df811897cfc48b24565164) 白天选定任务，再按 [夜间执行约定](docs/day-night-workflow.md) 推进。当前研究卡均待决策；自动唤醒不会替用户选择方向。
+
 ## 如何分工
 
 ![主代理、任务卡、WorkBuddy 与结果验收的产品总览](docs/assets/task-router-overview.png)
